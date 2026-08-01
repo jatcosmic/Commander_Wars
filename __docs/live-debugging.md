@@ -1,4 +1,4 @@
-#Live Debugging of Scripts and Mods
+# Live Debugging of Scripts and Mods
 
 Press `F1` to open the console. Once there, you can do things like `setDeveloperMode(1)` to enable debug logging. This can show information about the cursor, unit selected, etc to the console. It is of limited use at running functions without a script, however. 
 

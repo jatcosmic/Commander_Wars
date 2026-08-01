@@ -9,7 +9,7 @@
 | Current player | `GameMap::getCurrentPlayer()`, it is likely preferrable to get the Id of the current player so like so, `GameMap::getCurrentPlayer->getPlayerID()` seeing as multiple functions like `AiProcessPipe::onNewAction()` calls it like so: `m_pMap->getCurrentPlayer()->getPlayerId()` also `InfluenceFrontMap::addBuildingInfluence` calls it like this as well when getting the owner of a building that can build units `pBuilding->getOwner()->getPlayerID()` |
 | Income | `Player::CalcIncome()`, used in `InfluenceFrontMap::addBuildingInfluence()` 
 | Funds | `Player::getFunds()`, used in `NormalAi::buildUnits()` probably when building units |
-| Fog of war | `Player::getFieldDirectVisible`, which relies on the field, `std::vector<std::vector<VisionFieldInfo>> m_FogVisionFields` so this contains the info the player can see |
+| Fog of war | `Player::getFieldDirectVisible`, which relies on the field, `std::vector<std::vector<VisionFieldInfo>> m_FogVisionFields` so this contains the info the player can see. Also see another function like `Unit:isStealthed` which makes use ofthese same functions to determine what units we can see at what positions. |
 
 
 ### References:
