@@ -2,13 +2,14 @@
 
 | Question | Answer |
 | ---- | --- |
-| How do I enumerate units I can build? | `SimpleProductionSystem::buildUnit(qint32 x, qint32 y, ...)` (1)  
+| How do I enumerate units I can build? | `StringList m_BuildList` which has a comment saying, **"m_BuildList contains all units we're allowed to build"**. We can see how the AI does it in function `SimpleProductionSystem::buildUnit(qint32 x, qint32 y, ...)` which it used during a live game to build units (1) | 
 | How do I enumerate buildings? | Often the type `QmlVectorBuilding` is used as in `SimpleProductionSystem` it uses it to enumerate the buildings. |
-| Terrain lookup
-| Weather
-| Current player
-| Income
-| Fog of war
+| Terrain lookup | `GameMap::getTerrain(x, y)` A function, `CoreAI::moveSupport(...)` makes use of this function |   
+| Weather | `GameMap::getGameRules()->getCurrentWeather()` used like this in `Building::updateBuildingSprites()` |
+| Current player | `GameMap::getCurrentPlayer()`, it is likely preferrable to get the Id of the current player so like so, `GameMap::getCurrentPlayer->getPlayerID()` seeing as multiple functions like `AiProcessPipe::onNewAction()` calls it like so: `m_pMap->getCurrentPlayer()->getPlayerId()` also `InfluenceFrontMap::addBuildingInfluence` calls it like this as well when getting the owner of a building that can build units `pBuilding->getOwner()->getPlayerID()` |
+| Income | `Player::CalcIncome()`, used in `InfluenceFrontMap::addBuildingInfluence()` 
+| Funds | `Player::getFunds()`, used in `NormalAi::buildUnits()` probably when building units |
+| Fog of war | `Player::getFieldDirectVisible`, which relies on the field, `std::vector<std::vector<VisionFieldInfo>> m_FogVisionFields` so this contains the info the player can see |
 
 
 ### References:
