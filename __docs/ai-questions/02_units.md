@@ -1,7 +1,7 @@
 | Question | Answer |
 | --- | --- |
 | How do I enumerate all units? | `GameMap::getUnits(player)` |
-| How do I get my units? | `Player::getSpUnits()` |
+| How do I get my units? | `Player::getSpUnits()`, see how `CoreAI::GetOwnUnitCounts()` gets its own units, what kind of units it has, and the needs of those units |
 | How do I get my enemies units? | `Player::getSpEnemyUnits()`, the function  `CoreAI::prepareEnemieData()` calls this and a few other useful functions like `Player::getSpEnemyBuildings()` to get all the data related to the enemy |
 | How to I get my army value? | `Player::calcArmyValue()` |
 | How do I enumerate friendly units? | ``` (foreach players as otherPlayer) { if(thisPlayer->isAlly(otherPlayer)) { friendlyUnits.push_back(otherPlayer->getSpUnits()) } }``` |

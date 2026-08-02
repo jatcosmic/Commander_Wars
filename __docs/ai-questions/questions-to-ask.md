@@ -97,3 +97,197 @@ Where are weapon definitions?
 How is luck handled?
 Counterattacks?
 CO modifiers?
+
+## 05_Pathfinding.md
+
+### Movement
+How does the game determine legal moves?
+Does it use A*?
+Dijkstra?
+BFS?
+
+### Terrain
+Where are movement costs looked up?
+How are impassable tiles represented?
+Bridges?
+Rivers?
+Teleport tiles?
+
+### Obstacles
+Friendly units
+Enemy units
+Hidden units
+Buildings
+
+How do these affect movement?
+
+### Special Cases
+Transport loading
+Unloading
+Airports
+Naval movement
+Pipe seams
+Gates
+
+### AI Questions
+
+Can I ask:
+
+```Give me every reachable tile.```
+
+or do I have to compute it?
+
+
+## 06_Threat_Maps.md
+
+This is almost entirely AI.
+
+Questions:
+
+How do I compute:
+
+Enemy attack range?
+Friendly attack range?
+Indirect fire?
+Fog?
+
+Should threat include:
+
+Movement?
+
+Example:
+
+Tank
+
+Moves 6
+
+Attacks 1
+
+Threat radius
+
+7
+
+How are indirect units handled?
+
+Artillery
+
+Move 5
+
+Attack 2-3
+
+Threat isn't a circle.
+
+It's
+
+Move
+
+↓
+
+Attack
+
+Should threat account for
+
+HP?
+Ammo?
+Fuel?
+
+
+## 07_Influence_Maps.md
+
+### Questions:
+
+What is influence?
+
+How should influence decay?
+
+Distance?
+
+Linear?
+
+Exponential?
+
+Should influence depend on
+
+HP?
+Cost?
+CO?
+
+Multiple maps?
+
+Friendly influence
+
+Enemy influence
+
+City influence
+
+Production influence
+
+How often should influence be recomputed?
+
+Every unit?
+
+Every turn?
+
+## 08_Evaluation_Function.md
+
+Probably the most important file.
+
+Questions:
+
+How valuable is
+
+Infantry?
+Tank?
+Md Tank?
+
+Cities
+
+How valuable?
+
+Airport?
+
+HQ?
+
+Should value depend on
+
+HP?
+
+Example
+
+1000-cost infantry
+
+10 HP = 1000
+
+5 HP = 500
+
+Terrain?
+
+Should a tank on a mountain be worth more?
+
+Positional value?
+
+Examples
+
+Near HQ?
+
+Blocking bridge?
+
+Threatening artillery?
+
+Capturing city?
+
+Economic value?
+
+Income?
+
+Tech advantage?
+
+Win conditions?
+
+How do we score:
+
+Destroy HQ
+
+Destroy army
+
+Capture cities

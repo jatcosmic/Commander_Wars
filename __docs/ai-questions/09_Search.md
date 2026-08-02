@@ -1,0 +1,3 @@
+# Search
+
+Use expectiminimax algorithm
