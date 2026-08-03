@@ -762,6 +762,7 @@ set(${PROJECT_NAME}_SRCS
     ai/capturebuildingselector.h ai/capturebuildingselector.cpp
     ai/aiprocesspipe.h ai/aiprocesspipe.cpp
     ai/trainingdatagenerator.h ai/trainingdatagenerator.cpp
+    ai/otterai.h
     # production system
     ai/productionSystem/simpleproductionsystem.h ai/productionSystem/simpleproductionsystem.cpp
 

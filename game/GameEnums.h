@@ -199,6 +199,7 @@ public:
         AiTypes_MovePlanner = -2,
         AiTypes_ProxyAi = -1,
         AiTypes_Human = 0,
+        AiTypes_Otter,
         AiTypes_VeryEasy,
         AiTypes_Normal,
         AiTypes_NormalOffensive,

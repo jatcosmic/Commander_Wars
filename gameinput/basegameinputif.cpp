@@ -105,6 +105,19 @@ spBaseGameInputIF BaseGameInputIF::createAi(GameMap* pMap, GameEnums::AiTypes ty
         ret = MemoryManagement::create<HumanPlayerInput>(pMap);
         break;
     }
+    case GameEnums::AiTypes_Otter: 
+    {
+        if(Settings::getInstance()->getSpawnAiProcess() &&
+            !Settings::getInstance()->getAiSlave())
+        {
+            ret = MemoryManagement::create<DummyAi>(pMap, type);
+        }    
+        else 
+        {
+            ret = MemoryManagement::create<OtterAI>(pMap, "otterAI.ini", type, "OTTERAI");
+        }
+        break;
+    }
     case GameEnums::AiTypes_VeryEasy:
     {
         if (Settings::getInstance()->getSpawnAiProcess() &&

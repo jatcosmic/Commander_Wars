@@ -109,9 +109,19 @@ void QmlVectorUnit::pruneEnemies(const QmlVectorUnit * pOwnUnits, const QmlVecto
         qint32 movepoints = m_Vector[i]->getBaseMovementPoints();
         QPoint position = m_Vector[i]->getMapPosition();
         bool inRange = false;
+
+        // Remove enemy units that are too far away from our units to become strategically
+        // relevant within the next few turns (the turns determined by distanceMultiplier).
+        //
+        // Keep an enemy if it is close enough to any of our units that the
+        // two forces could reasonably interact. This is only a pruning
+        // heuristic to reduce AI computation; it is NOT an attack-range test.
         for (auto & ownUnit : pOwnUnits->getVector())
         {
             auto distance = GlobalUtils::getDistance(ownUnit->getMapPosition(), position);
+            
+            // Combined movement approximates how quickly the two units can
+            // close the distance if they move toward each other.
             if (distance < distanceMultiplier * (movepoints + ownUnit->getBaseMovementPoints()))
             {
                 inRange = true;
