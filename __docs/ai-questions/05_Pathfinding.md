@@ -1,12 +1,11 @@
 # Pathfinding Questions and Answers for AI
 
-| Questions | Answers |
-| --- | --- |
-| How does the game determine legal moves? |  |
 
 ### Movement
-How does the game determine legal moves?
-Where are movement costs looked up
+| Questions | Answers |
+| --- | --- |
+| How does the game determine legal moves? | It uses the `IslandMaps` class and `PathfindingSystem::explore()` to find moves which can be performed. `IslandMaps` creates a list of all places that can be moved to by that particular movement type. |
+| Where are movement costs looked up | 
 Does it use A*?
 Dijkstra?
 BFS?
