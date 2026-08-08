@@ -162,6 +162,19 @@ protected:
      * @param pUnit
      * @return
      */
+    
+    /**
+     * @brief Returns true if the unit meets the conditions to be usable. False otherwise.
+     *
+     * Units are considered usable if:
+     *   1. They have enough fuel to move.
+     *   2. The unit isn't on a building and they have more than the minimum health set in m_minUnitHealth 
+     *   3. The unit is on an owned building and has more health than the maximum health set in m_maxUnitHealth.
+     *   4. The unit hasn't already moved.
+     * 
+     * @param pUnit The unit in question.
+     * @return bool
+     */    
     bool isUsingUnit(Unit* pUnit);
     /**
      * @brief moveUnits

@@ -413,16 +413,20 @@ bool NormalAi::isUsingUnit(Unit *pUnit)
         Building *pBuilding = m_pMap->getTerrain(pUnit->Unit::getX(), pUnit->Unit::getY())->getBuilding();
         if (pBuilding == nullptr && pUnit->getHpRounded() <= m_minUnitHealth)
         {
+            // Unit isn't on a building and its health is too low. Don't use it.
             return false;
         }
         else if (pBuilding != nullptr && pBuilding->getOwner() == m_pPlayer &&
                  pUnit->getHpRounded() <= m_maxUnitHealth)
         {
+            // Unit is on a building receiving repairs, but its current health is less 
+            // than the health that it needs to be considered effective.
             return false;
         }
     }
     if (pUnit->getHasMoved())
     {
+        // Can't use a unit that has already moved.
         return false;
     }
     return true;
@@ -1811,6 +1815,8 @@ void NormalAi::updateAllUnitData(spQmlVectorUnit &pUnits, spQmlVectorBuilding &p
     bool initial = m_EnemyUnits.size() == 0;
     spQmlVectorUnit enemyUnits = m_pPlayer->getSpEnemyUnits();
     enemyUnits->pruneEnemies(pUnits.get(), pBuildings.get(), m_ownBuildingPruneRange, m_enemyPruneRange);
+    
+    // Will create an Island Map of all movable tiles on map for all units
     rebuildIsland(pUnits);
     rebuildIsland(enemyUnits);
 
@@ -1968,10 +1974,12 @@ void NormalAi::createUnitData(spUnit pUnit, MoveUnitData &data, bool enemy, doub
         }
         if (pUnit->getHasMoved())
         {
+            // After the unit has moved, it should have slightly less influence--hence the "-1"
             data.pUnitPfs->setMovepoints(moveMultiplier * data.movementPoints - 1);
         }
         else
         {
+            // Before the unit has moved, it should have more influence
             data.pUnitPfs->setMovepoints(moveMultiplier * data.movementPoints);
         }
         data.pUnitPfs->explore();
@@ -1997,6 +2005,14 @@ void NormalAi::calcVirtualDamage()
             action->setTarget(QPoint(pUnit->Unit::getX(), pUnit->Unit::getY()));
             std::vector<CoreAI::DamageData> ret;
             std::vector<QVector3D> moveTargetFields;
+            
+            // We want to get all targets pUnit can attack over the next maxDistance turns.
+            // This is what the value:
+            //
+            //      ownUnit.movementPoints * maxDistance + 1
+            //
+            // Is responsible for. The +1 is an off-by-one fix so that tiles at the maximum range of a
+            // unit's movement are considered. 
             CoreAI::getAttackTargets(pUnit, action, ownUnit.pUnitPfs.get(), ret, moveTargetFields, ownUnit.movementPoints * maxDistance + 1);
             QPoint ownPos = pUnit->Unit::getPosition();
             for (auto &damageData : ret)

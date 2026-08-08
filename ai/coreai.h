@@ -307,20 +307,39 @@ public:
      */
     void getBestAttacksFromField(Unit* pUnit, spGameAction & pAction, std::vector<QVector3D>& ret, std::vector<QVector3D>& moveTargetFields);
     /**
-     * @brief getAttackTargets
-     * @param pUnit
-     * @param pAction
-     * @param pPfs
-     * @param ret
-     * @param moveTargetFields
+     * @brief getAttackTargets collects every attack pUnit could make this turn, both from its current
+     * position and, if it can move-and-fire, from every field reachable via pPfs (up to maxDistance).
+     * For each candidate firing position it temporarily sets pAction's movepath to that field and
+     * delegates to getAttacksFromField() to compute and append the resulting damage; pAction's
+     * movepath is reset to empty before returning.
+     * 
+     * @param pUnit the unit whose possible attacks are being enumerated
+     * @param pAction the fire action used to probe each candidate firing position
+     * @param pPfs pathfinding system already run for pUnit, used to enumerate reachable fields
+     * @param ret [out] appended with one DamageData entry per valid attack found
+     * @param moveTargetFields [out] appended with (x, y, weight) of the firing position for each
+     * valid attack found
+     * @param maxDistance movement-cost limit used when enumerating reachable firing positions; this
+     * is passed straight through to PathFindingSystem::getAllNodePointsFast(), which keeps tiles with
+     * cost < maxDistance (a strictly-less-than / exclusive bound). To include every tile the unit can
+     * actually reach with N movement points, pass N + 1. A larger value (e.g. movementPoints * 2 + 1)
+     * can be passed deliberately to look beyond the unit's real single-turn reach, e.g. for speculative
+     * "virtual" threat estimation.
      */
     void getAttackTargets(Unit* pUnit, spGameAction & pAction, UnitPathFindingSystem* pPfs, std::vector<CoreAI::DamageData>& ret, std::vector<QVector3D>& moveTargetFields, qint32 maxDistance = PathFindingSystem::infinite) const;
     /**
-     * @brief getAttacksFromField
-     * @param pUnit
-     * @param pAction
-     * @param ret
-     * @param moveTargetFields
+     * @brief getAttacksFromField checks every field pUnit could attack from the position currently
+     * set on pAction's movepath (i.e. pAction->getActionTarget()) and records the resulting damage.
+     * It reads the list of attackable tiles from pAction->getMarkedFieldStepData(), and for each one
+     * either an enemy unit or an attackable terrain/building, computes the precise HP/funds damage via
+     * calcUnitDamage()/calcFundsDamage() and appends it to ret and moveTargetFields. Does not move or
+     * modify pUnit; pAction's movepath must already be set by the caller to the field to fire from.
+     * 
+     * @param pUnit the unit that would perform the attack
+     * @param pAction the pending fire action; its movepath end tile is used as the firing position
+     * @param ret [out] appended with one DamageData entry per valid attack found from this field
+     * @param moveTargetFields [out] appended with (x, y, weight) of the firing position for each
+     * valid attack found, weight reflecting stealth/visibility maluses
      */
     void getAttacksFromField(Unit* pUnit, spGameAction & pAction, std::vector<DamageData>& ret, std::vector<QVector3D>& moveTargetFields) const;
     /**
@@ -622,6 +641,17 @@ protected:
      * @param pEnemyBuildings
      */
     void prepareEnemieData(spQmlVectorUnit & pUnits, spQmlVectorBuilding &pBuildings, spQmlVectorUnit & pEnemyUnits, spQmlVectorBuilding & pEnemyBuildings);
+    /**
+     * @brief Sorts units in processing order for AI decision making.
+     *
+     * Units are ordered using the following priority:
+     *   1. Non-capturing units before capturing units.
+     *   2. Among units with the same capture ability, those farther from the nearest enemy first.
+     *   3. If still tied, units with fewer movement points first.
+     *
+     * @param pUnits The units to sort.
+     * @param pEnemyUnits Enemy units used to determine each unit's distance to the nearest enemy.
+     */    
     void sortUnitsFarFromEnemyFirst(std::vector<MoveUnitData> & pUnits, spQmlVectorUnit & pEnemyUnits);
 
     /**

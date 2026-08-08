@@ -2079,9 +2079,15 @@ void CoreAI::sortUnitsFarFromEnemyFirst(std::vector<MoveUnitData> & pUnits, spQm
                 distance = newDistance;
             }
         }
+        // set the distance to our closest enemy
         pUnitData.distanceToEnemy = distance;
         pUnitData.canCapture = pUnitData.actions.contains(CoreAI::ACTION_CAPTURE);
     }
+    
+    // Sort units using the following priority:
+    //   - Non-capturing units before capturing units.
+    //   - Among units with the same capture ability, farther units come first.
+    //   - If still tied, units with lower movement points come first.
     std::sort(pUnits.begin(), pUnits.end(), [](const MoveUnitData& lhs, const MoveUnitData& rhs)
     {
         if (lhs.canCapture == rhs.canCapture)
