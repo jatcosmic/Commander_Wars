@@ -12,6 +12,7 @@ while reviewing them, so everything lives in one place.
 3. [Influence Map](#3-influence-map)
 4. [Evaluation Function](#4-evaluation-function)
 5. [Search Strategy](#5-search-strategy)
+6. [Cooperation Without a Planner](#6-cooperation-without-a-planner)
 
 ---
 
@@ -389,3 +390,232 @@ movement range. This is the single biggest lever for taming branching factor.
    exists for later: *-pruning (star1/star2), used in backgammon-style
    expectiminimax engines. Not a v1 concern — just worth knowing the name
    exists rather than reinventing it later.
+
+---
+
+## 6. Cooperation Without a Planner
+
+This section resolves a specific question: *does a per-unit greedy AI produce
+squad-like behaviour — screening, mutual support, transport-assisted captures,
+a force holding a chokepoint — on its own, or does it need an explicit
+hierarchical planner that forms squads and assigns them goals?*
+
+Answer: most of it emerges, **provided the evaluation function is board-shaped
+rather than action-shaped**. The parts that don't emerge are fixed by adding
+*potential* terms to the evaluation (Section 6.4), not by adding a planner
+(Section 6.5).
+
+### 6.1 Evaluate the board, not the action
+
+Section 5 describes candidate selection as "score every candidate move and take
+the max." Everything here depends on one detail that sentence leaves unstated:
+
+> **max of *what number*?**
+
+Two readings produce near-identical call sites and completely different AIs:
+
+- **Action-shaped** — scores *"how good is this action for this unit"* (damage
+  dealt, capture progress made). No cooperation is possible, ever.
+- **Board-shaped** — scores *"how good is the whole board state after this
+  action."* Cooperation is nearly free.
+
+The evaluation described in Section 4 is already board-shaped —
+`unit_strength = Σ cost(u) × hp_fraction(u)` sums over *all owned units*, not
+the moving one. Keep it that way. The risk is not in the design, it's in
+implementation drift.
+
+**The drift risk is concrete.** The shipped `NormalAi` is firmly action-shaped:
+`normalai.cpp:3026-3085` accumulates `score +=` bonuses that describe *the unit
+being considered* and never constructs a board state at all. Mirroring its
+structure while intending this document's design lands on action-shaped without
+that ever being an explicit decision.
+
+**Why this is the entire mechanism for cooperation.** With a board-shaped eval,
+an infantry that steps in front of a tank scores well *for the infantry* — not
+because anything told it to screen, but because the resulting board contains a
+safer tank. Nothing represents a squad, a role, or an assignment. Same reason
+chess engines defend pieces without having any concept of "defense."
+
+Behaviours that emerge from this alone:
+
+- Screening, mutual support, artillery-behind-the-line, formation cohesion
+- Chokepoint occupation — a valuable, defensible tile simply attracts units
+- Focus fire and combined-arms strikes — a freebie from the sequential
+  decomposition in Section 5: unit 1 damages a target, unit 2 evaluates against
+  the *intermediate* state and sees a cheap kill
+
+These groupings are non-sticky; they dissolve the moment a better option
+appears. That is correct behaviour, and it's the main reason explicit squads
+underperform (Section 6.5).
+
+### 6.2 Collapse the positional terms
+
+Once evaluation is board-shaped, do **not** implement `screening`,
+`attack coverage`, and `formation cohesion` as separate features. They are not
+independent — they are three descriptions of one quantity the threat map
+already produces:
+
+```
+defensive_subtotal = − Σ expected funds damage across my units next turn
+offensive_subtotal = + Σ expected funds damage I can deal next turn
+```
+
+Stepping in front of the tank reduces the first sum. So does favourable
+terrain, so does retreating out of range, so does spacing units so a single
+enemy indirect can't threaten two of them at once. All of it, from one term.
+
+Scoring the three sub-concepts separately means paying three times for the same
+board fact — precisely the double-counting warned about in Section 4. Prefer the
+collapsed form and let the named behaviours be *observed outcomes*, not inputs.
+
+### 6.3 Residual gap: move ordering
+
+A board-shaped eval does not fix everything. The remaining coordination
+weakness is **ordering**, not locality: under sequential per-unit selection, an
+infantry can only screen a tank that has *already* moved. If the infantry
+resolves first there is nothing to screen yet, so it does something else — and
+the tank then moves out and sits exposed.
+
+- **Cheap mitigation (v1):** resolve units in decreasing order of cost/value, so
+  expensive units commit first and cheap ones react to them.
+- **Real fix (v2):** make the sequence itself searchable. This is one of the
+  concrete payoffs of the search work in Section 5.
+
+Recorded here so it isn't later misdiagnosed as an evaluation bug.
+
+**Related cheap win — target reservation.** During the sequential pass, record
+expected damage already committed against each target so later units don't
+overkill it, and reserve capture targets so three infantry don't all beeline the
+same city. This is the well-formed version of the ad-hoc "split attention
+between multiple targets" discount criticised in Section 2, and it delivers most
+of what people actually want out of squads.
+
+### 6.4 Potential terms: projected capture income
+
+Board-shaped evaluation of the *current* state still cannot justify moves whose
+value is entirely contingent on future turns. The canonical case:
+
+> Build an APC, load an infantry, drive it forward, unload, capture.
+
+Every step scores badly in isolation. The APC costs 5000 funds and deals no
+damage, captures nothing, and projects no threat. Loading is worse — the
+infantry's capture progress and threat projection both drop to zero. A greedy
+evaluator will essentially never do this.
+
+The fix is a **potential term, not a plan**. Building directly on the
+`income × expected remaining turns held` framing from Section 4:
+
+```
+projectedCaptureIncome = Σ over unowned capturable properties P:
+                             income(P) × max(0, horizon − eta(P))
+
+eta(P) = min over my capture-capable units:
+             min( walkETA(inf, P), rideETA(inf, transport, P) )
+```
+
+`eta` is the earliest turn a capture could *begin*, and it is
+**transport-aware**. That single property makes the whole chain work:
+
+- **Loading scores positively.** Boarding an APC cuts that infantry's `eta`
+  immediately, so a move that reads as pure loss under a state-only eval
+  registers as a gain.
+- **Transport production justifies itself.** Score a hypothetical APC by the
+  `Δ projectedCaptureIncome` it would create, weighed against its cost — in the
+  same funds currency as everything else (Section 4, suggestion 1).
+- **Map adaptivity is free.** On a sprawling map where infantry need eight turns
+  to reach the far cities, `Δ eta` is large and transports get built. On a
+  compact map `Δ eta ≈ 0` and they don't. No per-map tuning.
+
+That last point is the sharpest contrast with the shipped AI, which decides
+transport production from a tuned constant:
+
+```cpp
+// normalai.cpp:3027
+if (pUnits->size() / (unitBuildData.smallTransporterCount + 1)
+        > m_unitToSmallTransporterRatio && ...)
+```
+
+That test is blind to map geometry — it produces the same transport mix on a
+cramped four-city map as on a sprawling archipelago. The `eta` formulation reads
+the map instead.
+
+**Implementation notes:**
+
+1. **`horizon` needs a value.** A flat constant (~30 turns) is fine to start.
+   A discount factor (`Σ γᵗ`) is cleaner but is a tuning refinement, not a v1
+   concern.
+2. **Tier it.** Full `eta` computation belongs in the once-per-turn tier
+   (Section 1). Per candidate move, recompute only the moved unit's contribution
+   to the `min` — recomputing the whole field per candidate is far too expensive.
+3. **Reuse the pathfinder** already committed to for movement-cost-based
+   influence decay in Section 3. `eta` is the same traversal with a different
+   accumulator.
+
+**Generalising.** The same shape applies wherever value is contingent rather
+than realised: distance-to-front gradients for units with nothing else to do,
+denial value for a unit that will die but costs the enemy more than it was worth
+(Section 4's Strategic Pressure list). *If a desired behaviour looks like it
+needs a plan, first check whether it needs a potential term.*
+
+### 6.5 Why not an explicit hierarchical planner
+
+The natural alternative is a "Commander" tier that reads the map, picks
+objectives, forms squads (APC + infantry; artillery + rockets + tank + infantry
+holding a chokepoint) and assigns them goals. Rejected for v1, for three
+reasons:
+
+1. **Most of it is already covered.** Sections 6.1 and 6.4 produce the described
+   behaviours — screening, mutual support, chokepoint holding,
+   transport-assisted capture — without any squad representation at all.
+2. **Commitment is brittle.** A mech assigned to `HOLD_CHOKEPOINT` is still
+   assigned to it when a bomber appears and that mech is the only unit in range
+   that matters. The fix is an override; then overrides for HQ threats, capture
+   races, low fuel, and for the escorted tank dying and leaving an escort
+   escorting nothing. The override layer becomes the AI, and bad play now has
+   two possible causes instead of one.
+3. **Without search, a plan is an unvalidated assertion.** A planner's value is
+   committing to a line that is locally bad but globally good — and only
+   lookahead can establish that the line really is good. Layering a planner on
+   the 1-ply greedy evaluator scoped in Section 5 means committing to lines
+   nothing has verified.
+
+**What to build instead, when a strategic tier is wanted.** Keep a Commander,
+but have it emit **bias, not orders**. It never touches a unit; it writes into
+the maps evaluation already reads:
+
+- **Objective bonus field** — a funds-denominated overlay on tiles/targets
+  ("holding this chokepoint is worth +3000 this turn"). Units still take their
+  individual max; the score landscape has simply been tilted.
+- **Global posture weights** — aggression/turtle/race modifiers over the
+  existing `w_material`, `w_pressure`, … coefficients. This is *exactly* the
+  mechanism already chosen for CO-specific evaluation in Section 4: shift
+  weights, don't change the search. Same lever, different input.
+- **Production requests** — the one component that genuinely needs planning,
+  since production is multi-turn resource allocation with no greedy formulation.
+  Note that `projectedCaptureIncome` already covers the transport slice of this.
+
+Nothing commits, so nothing needs an override. A unit that "should" be holding a
+chokepoint but is the only answer to a bomber simply goes and kills the bomber,
+because the numbers say so.
+
+### 6.6 Suggested ordering
+
+```
+board-shaped eval
+      │
+      ▼
+collapsed positional terms (6.2)
+      │
+      ▼
+potential terms — projectedCaptureIncome (6.4)
+      │
+      ▼
+target reservation (6.3)
+      │
+      ▼
+Commander-as-bias (6.5), production as the only true planning component
+```
+
+The potential terms matter *before* any planner is considered: without them,
+greedy genuinely will refuse to build transports, which invites the wrong
+conclusion that a planner was the missing piece.
