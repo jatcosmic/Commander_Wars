@@ -22,6 +22,11 @@ public:
     virtual ~InfluenceInfo() = default;
 
     void reset(GameMap* pMap);
+    /**
+     * @brief updateOwner Sets the owners of the present tile by finding the players with the highest influence at the tile.
+     * @param pOwner
+     * @return
+     */
     void updateOwner(Player* pOwner);
     qint32 getPlayerInfluence(qint32 playerId);
     void increaseInfluence(qint32 player, qint32 value);
@@ -55,6 +60,10 @@ public:
     virtual ~InfluenceFrontMap() = default;
     void addBuildingInfluence();
     void addUnitInfluence(Unit* pUnit, UnitPathFindingSystem* pPfs, qint32 movePoints);
+    /**
+     * @brief updateOwners Sets the owners of every tile by finding the players with the highest influence at the tile.
+     * @return
+     */
     void updateOwners();
     void calculateGlobalData();
     void setOwner(Player *newPOwner);
@@ -102,11 +111,19 @@ private:
      */
     qint32 getIslandFromUnitId(const QString & unitId, std::map<QString, qint32> & unitIdToIsland);
     /**
-     * @brief findFrontLineTiles
+     * @brief findFrontLineTiles scans every tile and flags the ones that sit on a border between
+     * player territories, recording the players involved in InfluenceInfo::frontOwners and the
+     * movement types that can reach the border in InfluenceInfo::frontMovetype. A tile qualifies if
+     * it has an owner and an adjacent tile does too, and either the tile is claimed by several
+     * players at once or the two tiles are claimed by different single players. Since influence is
+     * pooled per team, teammates always tie and are always listed together, so a tile with a single
+     * owner belongs to a player with no allies - which is why a differing single owner next door is
+     * necessarily an enemy and needs no explicit alliance check. The flagged tiles are afterwards
+     * grouped into connected front lines by createFrontLine().
      */
     void findFrontLineTiles();
     /**
-     * @brief addFrontLineMoveTypes
+     * @brief addFrontLineMoveTypes Adds all move types that can reach this front line tile
      */
     void addFrontLineMoveTypes(InfluenceInfo & info, qint32 x1, qint32 y1, qint32 x2, qint32 y2);
     /**

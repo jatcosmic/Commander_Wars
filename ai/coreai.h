@@ -635,10 +635,15 @@ public:
     void addSelectedFieldData(spGameAction & pGameAction, const QPoint & point);
 protected:
     /**
-     * @brief prepareEnemieData
-     * @param pUnits
-     * @param pEnemyUnits
-     * @param pEnemyBuildings
+     * @brief prepareEnemieData fetches this player's current enemy units/buildings into
+     * pEnemyUnits/pEnemyBuildings and randomizes their order. Once the transport-planning pass has
+     * run this turn (m_usedTransportSystem), it also prunes out enemies too far from our own units
+     * and buildings to be strategically relevant soon, as a performance heuristic - not an attack-range
+     * check. Pruning is skipped before that point since transport planning needs the full enemy list.
+     * @param pUnits our own units, used as the reference point for pruning
+     * @param pBuildings our own buildings, used as the reference point for pruning
+     * @param pEnemyUnits [out] the (possibly pruned) enemy unit list
+     * @param pEnemyBuildings [out] the (possibly pruned) enemy building list
      */
     void prepareEnemieData(spQmlVectorUnit & pUnits, spQmlVectorBuilding &pBuildings, spQmlVectorUnit & pEnemyUnits, spQmlVectorBuilding & pEnemyBuildings);
     /**
@@ -777,8 +782,15 @@ protected:
     void GetOwnUnitCounts(std::vector<MoveUnitData> & units, spQmlVectorUnit & pOwnUnits, spQmlVectorUnit & pEnemyUnits, spQmlVectorBuilding & pEnemyBuildings,
                           UnitCountData & countData);
     /**
-     * @brief buildCOUnit
-     * @return
+     * @brief buildCOUnit tries to assign each of the player's COs that isn't already riding a unit
+     * (pCO->getCOUnit() == nullptr) to the best eligible unit of ours. For each CO, every unmoved,
+     * weapon-carrying unit is scored by its value and CO-specific affinity, minus a penalty for rank,
+     * and the highest-scoring candidate is chosen. If that score clears m_minCoUnitScore and either
+     * enough high-value units are active or the candidate itself is expensive enough, performs
+     * ACTION_CO_UNIT_0/1 to assign the CO and returns true; a CO that finds no suitable unit is left
+     * unassigned. Stops and returns true after assigning the first CO that finds a match.
+     * @param pUnits our own units, candidates for hosting a CO
+     * @return true if a CO was assigned to a unit this call
      */
     bool buildCOUnit(spQmlVectorUnit & pUnits);
     /**

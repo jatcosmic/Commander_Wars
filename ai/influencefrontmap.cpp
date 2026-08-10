@@ -47,6 +47,8 @@ void InfluenceInfo::updateOwner(Player* pOwner)
         }
         if (influence > highestValue)
         {
+            // Someone else has higher influence. Clear all the previous owners of the tile
+            // and set the current player as the owner
             highestValue = influence;
             owners.clear();
             owners.push_back(player);
@@ -186,21 +188,33 @@ void InfluenceFrontMap::addBuildingInfluence()
                 QPoint pos = buildingPositions[building];
                 float buildSize = static_cast<float>(buildLists[building].size());
                 qint32 owner = buildingOwners[building];
+
                 float singleInfluence = income[owner] / buildSize;
                 for (auto & unitId : buildLists[building])
                 {
+                    // The Island Maps tell us everywhere the unit can move. 
                     qint32 island = getIslandFromUnitId(unitId, unitIdToIsland);
 
                     if (island >= 0 && m_islands[island]->sameIsland(x, y, pos.x(), pos.y()))
                     {
+                        // The unit has reachable tiles on the same Island we are presently considering.
                         float dis = GlobalUtils::getDistance(curPos, pos);
                         if (dis > fullInfluenceRange)
                         {
+                            // dayDivider provides a rough estimate of how many turns it would take
+                            // for military influence from this building to reach the current tile.
+                            // It is based on Manhattan distance rather than actual unit movement,
+                            // terrain, or pathfinding. The +1.0f accounts for the fact that a unit
+                            // produced by a building cannot move on the turn it is produced.                           
+                            //
+                            // Effectively, a production building exerts less influence over distant territory
+                            // because it takes longer for units produced there to reach that territory.
                             float dayDivider = dis / fullInfluenceRange + 1.0f;
                             m_InfluenceMap[x][y].increaseInfluence(owner, singleInfluence / (dayDivider));
                         }
                         else
                         {
+                            // We are within the building's radius of influence. Add its full influence
                             m_InfluenceMap[x][y].increaseInfluence(owner, singleInfluence);
                         }
                     }

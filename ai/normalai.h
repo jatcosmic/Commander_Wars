@@ -329,7 +329,25 @@ protected:
                                std::vector<QVector3D>& moveTargetFields,
                                spQmlVectorBuilding & pBuildings, spQmlVectorBuilding & pEnemyBuildings);
     /**
-     * @brief calcVirtualDamage
+     * @brief calcVirtualDamage builds a speculative damage estimate for m_EnemyUnits.
+     *
+     * For each unit in m_OwnUnits, queries CoreAI::getAttackTargets() using an
+     * expanded movement budget to identify enemy units the attacker could plausibly
+     * threaten. Because each unit can perform only one attack, the potential damage
+     * against each candidate target is divided by the number of available attack
+     * targets, distributing the attacker's expected contribution across them. 
+     *
+     * Each contribution is additionally scaled by
+     * m_enemyUnitCountDamageReductionMultiplier and accumulated in the target's
+     * MoveUnitData::virtualDamageData. Contributions from all own units are
+     * combined, producing an approximate estimate of the damage each enemy unit is likely to
+     * receive this turn.
+     *
+     * This is a heuristic estimate rather than actual simulated damage. It is
+     * recomputed once at the start of each major phase specifically only when m_EnemyUnits has
+     * been cleared.
+     *
+     * See updateAllUnitData() for the initial-call guard.
      */
     void calcVirtualDamage();
     /**
@@ -466,8 +484,16 @@ protected:
      */
     float calcSupplyScore(std::vector<float>& data, UnitBuildData & unitBuildData);
     /**
-     * @brief updateAllUnitData
-     * @param pUnits
+     * @brief updateAllUnitData refreshes m_OwnUnits and m_EnemyUnits (position, HP, movement points,
+     * etc.) and the island maps from the current game state. Called on every process() tick, so this
+     * data stays current as units move or are destroyed throughout the turn.
+     *
+     * The heavier, phase-scoped computations - calcVirtualDamage() and createUnitInfluenceMap() - only
+     * run on the first call after m_EnemyUnits was last cleared (via clearUnitData(), e.g. at the start
+     * of the turn or a new action-step cycle), detected here via the emptiness of m_EnemyUnits before
+     * it gets rebuilt. They are not recomputed on every subsequent tick within the same phase.
+     * @param pUnits our own units
+     * @param pBuildings our own buildings
      */
     void updateAllUnitData(spQmlVectorUnit & pUnits, spQmlVectorBuilding &pBuildings);
     /**
