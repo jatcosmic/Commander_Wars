@@ -32,15 +32,27 @@ class CaptureBuildingSelector
 public:
     CaptureBuildingSelector(CoreAI & owner);
 
+    /**
+     * [AI: Replace - AI Policy]
+     */
     spGameAction getNextCaptureBuilding(std::vector<CoreAI::MoveUnitData> & rOwnUnits, CoreAI::MoveUnitData** targetUnitData);
 
     void addUsedFarAwayBuildings(QPoint farAwayTarget);
     void resetUsedFarAwayBuildings();
 private:
+    /**
+     * [AI: Replace - AI Policy]
+     * 
+     * Only works for NormalAI. Returns reachable buildings which can be captured or are missile silos
+     * or if the building cannot be reached in 1 turn, returns unowned high priority buildings with no unit on them that have not been captured yet
+     */
     TargetBuildings getTargetBuildings(std::vector<CoreAI::MoveUnitData> & rOwnUnits, QStringList & highPrioBuildings, spGameAction & pAction, CoreAI::MoveUnitData** targetUnitData);
     spGameAction getPerformingAction(TargetBuildings & captures, Unit *pUnit, CoreAI::MoveUnitData &unitData, qint32 targetIndex);
     bool getNextTarget(TargetBuildings & captureBuildings, TargetBuildings & captures, qint32 & targetIndex);
     qint32 getPrio(CaptureInfo & info);
+    /**
+     * @brief Returns buildings that this unit can reach
+     */
     TargetBuildings filterCaptures(TargetBuildings & captureBuildings, qint32 unitIdx);
     bool findSingleCaptureBuilding(TargetBuildings & captureBuildings, TargetBuildings & captures, qint32 & targetIndex);
 private:

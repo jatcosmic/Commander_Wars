@@ -590,6 +590,10 @@ public:
     Q_INVOKABLE qint32 getBuildingCountsOnEnemyIslands(QmlVectorUnit * pUnits, QmlVectorBuilding * pEnemyBuildings);
     /**
      * @brief hasTargets checks if a unit has anything to do on this island
+     * 
+     * [AI: Replace - AI Policy]
+     * Uses hard coded values to determine if units should be attacked 
+     * 
      * @param transporterMovement movement points of the transporting unit
      * @param pLoadingUnit
      * @param canCapture
@@ -695,6 +699,14 @@ protected:
     CircleReturns doExtendedCircleAction(qint32 currentX, qint32 currentY, qint32 x, qint32 y, qint32 min, qint32 max, std::function<CircleReturns(qint32, qint32)> functor);
     /**
      * @brief hasCaptureTarget
+     * 
+     * [AI: Replace - AI Policy]
+     * 
+     * Returns if there is an enemy building on the same island within a distance reasonable
+     * distance. If so, return that the building is close; if not, and the building is on 
+     * the same island, return that the building is far away. If there is no such building,
+     * then return that there is no target buildings. 
+     * 
      * @param pLoadingUnit
      * @param canCapture
      * @param pEnemyUnits

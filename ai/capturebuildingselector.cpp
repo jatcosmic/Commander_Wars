@@ -273,11 +273,18 @@ CaptureBuildingSelector::TargetBuildings CaptureBuildingSelector::getTargetBuild
         auto &unitData = rOwnUnits[i];
         if (unitData.nextAiStep <= m_owner.getAiFunctionStep())
         {
+            // [AI: Replace - AI Policy]
+            //
+            // This function will only work on Normal AI
             Unit *pUnit = unitData.pUnit.get();
             if (!pUnit->getHasMoved() &&
                 unitData.actions.contains(CoreAI::ACTION_CAPTURE) &&
                 pUnit->getAiMode() == GameEnums::GameAi_Normal)
             {
+                // [AI: Replace - AI Policy] 
+                //
+                // A unit that has already begun capturing a building is fast-tracked on to continue
+                // capturing said building, skipping any logic otherwise.
                 if (pUnit->getCapturePoints() > 0)
                 {
                     pAction = MemoryManagement::create<GameAction>(CoreAI::ACTION_CAPTURE, m_owner.getMap());
@@ -301,12 +308,14 @@ CaptureBuildingSelector::TargetBuildings CaptureBuildingSelector::getTargetBuild
                     action.setMovepath(QVector<QPoint>(1, target), 0);
                     if (unitData.pUnitPfs->getTargetCosts(target.x(), target.y()) < unitData.movementPoints + 1)
                     {
+                        // If this is a building with ACTION_CAPTURE
                         if (action.canBePerformed())
                         {
                             captureBuildings.push_back(CaptureInfo(target.x(), target.y(), i, false));
                         }
                         else
                         {
+                            // Check if building has ACTION_MISSILE
                             action.setActionID(CoreAI::ACTION_MISSILE);
                             if (action.canBePerformed() && fireSilos)
                             {

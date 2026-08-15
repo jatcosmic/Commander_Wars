@@ -615,6 +615,9 @@ public:
     Q_INVOKABLE void setMovementType(const QString & movementType);
     /**
      * @brief getLoadingPlace
+     * 
+     * Get maximum number of units that can be loaded into the transporter unit
+     * 
      * @return
      */
     Q_INVOKABLE qint32 getLoadingPlace();

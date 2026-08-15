@@ -34,6 +34,15 @@ NormalAi::NormalAi(GameMap *pMap, const QString &configurationFile, GameEnums::A
     setupJsThis(this);
     m_timer.setSingleShot(false);
     connect(&m_timer, &QTimer::timeout, this, &NormalAi::process, Qt::QueuedConnection);
+    // [AI: REPLACE - AI POLICY]
+    // The entire tuning table below is Normal AI's hand-tuned weight set: threshold
+    // constants, bonus/malus multipliers and probability percentages, loaded from
+    // normal/*.ini. Nearly every heuristic flagged elsewhere in this file reads one
+    // of these values, so this table is the single root of the tuned behaviour.
+    // Search AI must not inherit it. Its evaluator needs weights expressed in one
+    // common currency (funds, per AI_Design_Notes_Consolidated.md section 4), not
+    // an unstructured pile of unitless magic numbers spanning damage percentages,
+    // funds amounts, HP counts, tile distances and 0-100 dice chances.
     m_iniData = {
         // General
         {"MinMovementDamage", "General", &m_minMovementDamage, 0.3f, -1.0f, 1.0f},
@@ -119,6 +128,14 @@ NormalAi::NormalAi(GameMap *pMap, const QString &configurationFile, GameEnums::A
         {"LowIndirectUnitBonus", "Production", &m_lowIndirectUnitBonus, 30.0f, 0.0f, 100.0f},
         {"LowIndirectMalus", "Production", &m_lowIndirectMalus, 30.0f, 0.0f, 100.0f},
         {"HighIndirectMalus", "Production", &m_highIndirectMalus, 40.0f, 0.0f, 100.0f},
+        // [AI: INVESTIGATE]
+        // Existing bug, not a heuristic: "LowDirectUnitBonus" is bound to
+        // &m_highIndirectMalus rather than &m_lowDirectUnitBonus. So HighIndirectMalus
+        // is written twice (the ini's LowDirectUnitBonus value wins) and
+        // m_lowDirectUnitBonus is never loaded -- it keeps the 0.35 header default
+        // while every neighbouring bonus is on a 0-100 scale. That makes the direct
+        // unit bonus in calcBuildScore effectively dead. Worth knowing before using
+        // any observed Normal AI production behaviour as a reference baseline.
         {"LowDirectUnitBonus", "Production", &m_highIndirectMalus, 35.0f, 0.0f, 100.0f},
         {"LowDirectMalus", "Production", &m_lowDirectMalus, 20.0f, 0.0f, 100.0f},
         {"HighDirectMalus", "Production", &m_highDirectMalus, 40.0f, 0.0f, 100.0f},
@@ -176,6 +193,11 @@ NormalAi::NormalAi(GameMap *pMap, const QString &configurationFile, GameEnums::A
     {
         loadIni("normal/" + configurationFile);
     }
+    // [AI: REPLACE - AI POLICY]
+    // Hard-coded per-unit production weight ("build Mech 10% more often").
+    // A blanket unit-ID multiplier is a designer preference, not a property of the
+    // board. Search AI should reach the same conclusion, when it is true, from the
+    // enemy composition and terrain instead of a fixed constant.
     m_BuildingChanceModifier.insert("MECH", 1.1f);
 }
 
@@ -192,11 +214,24 @@ void NormalAi::process()
         m_timer.stop();
     }
     spQmlVectorBuilding pBuildings = m_pPlayer->getSpBuildings();
+    // [AI: REPLACE - AI POLICY]
+    // Existing AI shuffles its own building list so that ties later in buildUnits()
+    // resolve to a different building each turn. Search AI must be deterministic:
+    // the order buildings are considered in cannot be allowed to change the outcome.
+    // If two production sites really are equivalent the evaluator should say so and
+    // the tie should be broken by a stable rule, not by a shuffle.
     pBuildings->randomize();
     spQmlVectorUnit pUnits = m_pPlayer->getSpUnits();
     spQmlVectorUnit pEnemyUnits;
     spQmlVectorBuilding pEnemyBuildings;
     qint32 cost = 0;
+    // [AI: REPLACE - AI POLICY]
+    // Existing AI reduces silo usage to one boolean by testing the best silo target's
+    // funds damage against a fixed threshold (MinSiloDamage, pinned at 7000).
+    // Firing a silo is an action with a cost and a board consequence; Search AI should
+    // generate it as a candidate and let the evaluator rank it against every other
+    // action, rather than pre-approving it with a constant.
+    // The (2, 3) blast/search arguments are themselves unexplained magic numbers.
     m_pPlayer->getSiloRockettarget(2, 3, cost);
     m_missileTarget = (cost >= m_minSiloDamage);
     if (useBuilding(pBuildings, pUnits))
@@ -314,6 +349,25 @@ bool NormalAi::performActionSteps(spQmlVectorUnit &pUnits, spQmlVectorUnit &pEne
                                   spQmlVectorBuilding &pBuildings, spQmlVectorBuilding &pEnemyBuildings)
 {
     AI_CONSOLE_PRINT("NormalAi::performActionSteps()", GameConsole::eDEBUG);
+    // [AI: REPLACE - AI POLICY]
+    // This whole if/else-if ladder is Normal AI's turn structure, and it is the single
+    // largest policy decision in the file. The ordering itself is the strategy:
+    // capture before shooting, indirects before directs, repair before refill, build
+    // units last. The first branch that succeeds performs one action and returns,
+    // so a lower branch never gets to argue that its action was worth more.
+    //
+    // This is action-shaped control flow (AI_Design_Notes_Consolidated.md section 6.1):
+    // it decides *what kind of thing to do* before anything has evaluated a board state.
+    // A capture is taken because capture ranks above attack in this list, not because
+    // the resulting board is better.
+    //
+    // Search AI should not reproduce this ladder. It should enumerate every legal
+    // action for every unit as candidates in one pool, score the resulting board, and
+    // take the max -- with the sequencing concern handled by move ordering
+    // (section 6.3: resolve expensive units first), not by a fixed behaviour priority.
+    // Note the ladder also carries the resume/step state machine (m_aiStep,
+    // m_aiFunctionStep, nextAiStep) that lets the AI be re-entered after each action;
+    // that mechanism is worth keeping even though the priority ordering is not.
     if (m_aiStep <= AISteps::moveUnits && buildCOUnit(pUnits))
     {
     }
@@ -401,6 +455,15 @@ bool NormalAi::performActionSteps(spQmlVectorUnit &pUnits, spQmlVectorUnit &pEne
     return true;
 }
 
+// [AI: REPLACE - AI POLICY]
+// Existing AI uses two fixed HP thresholds (MinUnitHealth 3, MaxUnitHealth 7) to
+// declare a unit unusable this turn, which removes it from consideration entirely
+// before any scoring happens.
+// Search AI should not gate units out of the candidate pool. "This 3 HP tank should
+// sit on the base and repair" is a conclusion the evaluator must reach by comparing
+// the board after repairing against the board after attacking -- sometimes a 2 HP
+// unit is the only thing that can block a chokepoint or finish a kill, and a hard
+// gate makes that move unreachable.
 bool NormalAi::isUsingUnit(Unit *pUnit)
 {
     if (needsRefuel(pUnit))
@@ -653,6 +716,13 @@ bool NormalAi::refillUnits(spQmlVectorUnit &pUnits, spQmlVectorBuilding &pBuildi
     return false;
 }
 
+// [AI: INVESTIGATE]
+// Picks the reachable tile adjacent to the most units that need refuelling, capped by
+// maxRefillCount (called with hard-coded 4 and 1 from refillUnits). The count is a
+// proxy for value: it treats "supplies 3 units" as strictly better than "supplies 2"
+// regardless of which units they are or whether they are anywhere useful.
+// The reachable-tile enumeration is reusable; the "most adjacent needy units wins"
+// tie-break is the part Search AI should replace with a board score.
 bool NormalAi::getBestRefillTarget(UnitPathFindingSystem &pfs, qint32 maxRefillCount, QPoint &moveTarget, QPoint &refillTarget, qint32 movepoints) const
 {
     bool ret = false;
@@ -749,6 +819,14 @@ bool NormalAi::moveUnits(spQmlVectorUnit &pUnits, spQmlVectorBuilding &pBuilding
             pInterpreter->threadProcessEvents();
             Unit *pUnit = unitData.pUnit.get();
             ++unitData.nextAiStep;
+            // [AI: REPLACE - AI POLICY]
+            // Guessed constant standing in for "how far could a transporter carry this
+            // unit", used below by hasTargets() to decide whether the unit has anything
+            // worth doing at all. It is blind to which transports actually exist, where
+            // they are, and whether the map even has water.
+            // Search AI should derive reachability from real transports via the
+            // transport-aware eta() described in AI_Design_Notes_Consolidated.md
+            // section 6.4, not from an average.
             constexpr qint32 AVERAGE_TRANSPORTER_MOVEMENT = 7;
             bool canCapture = unitData.actions.contains(ACTION_CAPTURE);
             qint32 loadingIslandIdx = getIslandIndex(pUnit);
@@ -766,6 +844,16 @@ bool NormalAi::moveUnits(spQmlVectorUnit &pUnits, spQmlVectorBuilding &pBuilding
                 std::vector<QVector3D> transporterTargets;
                 spGameAction pAction = MemoryManagement::create<GameAction>(ACTION_WAIT, m_pMap);
                 QStringList &actions = unitData.actions;
+                // [AI: REPLACE - AI POLICY]
+                // distanceModifier is Normal AI's target-priority weight. It is set to 1,
+                // then bumped to 4 and 5 purely because capture targets were found, and
+                // is passed into every append*Targets call below where it inflates the
+                // effective distance of attack/support targets so the pathfinder prefers
+                // the capture. It encodes "capturing outranks attacking" as a distance
+                // fudge factor rather than as a value comparison.
+                // Search AI should put capture and attack candidates in the same pool and
+                // let the evaluator compare the resulting boards -- capture value comes
+                // from projected income (section 6.4), not from a hand-picked multiplier.
                 qint32 distanceModifier = 1;
                 // find possible targets for this unit
                 pAction->setTarget(QPoint(pUnit->Unit::getX(), pUnit->Unit::getY()));
@@ -786,6 +874,12 @@ bool NormalAi::moveUnits(spQmlVectorUnit &pUnits, spQmlVectorBuilding &pBuilding
                     appendAttackTargets(pUnit, pEnemyUnits, targets, distanceModifier);
                     appendAttackTargetsIgnoreOwnUnits(pUnit, pEnemyUnits, targets, distanceModifier);
                     appendTerrainBuildingAttackTargets(pUnit, pEnemyBuildings, targets, distanceModifier);
+                    // [AI: REPLACE - AI POLICY]
+                    // Repair is a last-resort fallback: only considered when no attack or
+                    // capture target exists anywhere. A damaged unit with any target in
+                    // sight can therefore never choose to go repair first.
+                    // Search AI should treat repairing as an ordinary candidate action
+                    // competing on board value, not as an empty-list fallback.
                     if (targets.size() == 0)
                     {
                         appendRepairTargets(pUnit, pBuildings, targets);
@@ -1115,6 +1209,17 @@ bool NormalAi::moveUnit(spGameAction &pAction, MoveUnitData *pUnitData, spQmlVec
                 QPoint ret = std::get<0>(target);
                 float minDamage = std::get<1>(target);
                 bool allEqual = std::get<2>(target);
+                // [AI: REPLACE - AI POLICY]
+                // "If the safest reachable tile still costs me more than half my own
+                // value, or every tile is equally bad, throw the unit away in a suicide
+                // attack." The 50%-of-unit-value cut-off is an arbitrary despair
+                // threshold, and the branch is reached on an ordering accident: it fires
+                // whenever getMoveTargetField() found no acceptable tile.
+                // Search AI should express this as ordinary comparison -- a trade is
+                // worth making when the resulting board scores higher than retreating,
+                // including the denial value of a unit that dies but costs the enemy more
+                // (AI_Design_Notes_Consolidated.md section 4, Strategic Pressure).
+                // There should be no separate "suicide" concept at all.
                 if (((ret.x() == pUnit->Unit::getX() && ret.y() == pUnit->Unit::getY()) ||
                      minDamage > pUnit->getCoUnitValue() / 2 ||
                      allEqual) &&
@@ -1141,6 +1246,12 @@ bool NormalAi::moveUnit(spGameAction &pAction, MoveUnitData *pUnitData, spQmlVec
                 auto path = turnPfs.getPathFast(movePath[idx].x(), movePath[idx].y());
                 pAction->setMovepath(path, turnPfs.getCosts(path));
             }
+            // [AI: REPLACE - AI POLICY]
+            // Two HP thresholds (LockedUnitHp 4, NoMoveAttackHp 3.5) decide whether a
+            // stationary unit is even allowed to look for an attack. A 3 HP unit that
+            // could move is silently forbidden from firing; a 3 HP unit that is boxed in
+            // is allowed to. Search AI should let the evaluator decide whether attacking
+            // at low HP is worth the retaliation, and never suppress the candidate.
             bool lockedUnit = (pAction->getMovePath().size() == 1) &&
                               (pUnit->getHp() < m_lockedUnitHp);
             // when we don't move try to attack if possible
@@ -1151,6 +1262,16 @@ bool NormalAi::moveUnit(spGameAction &pAction, MoveUnitData *pUnitData, spQmlVec
                 std::vector<QVector3D> ret;
                 std::vector<QVector3D> moveTargetFields;
                 getBestAttacksFromField(pUnit, pAction, ret, moveTargetFields);
+                // [AI: REPLACE - AI POLICY]
+                // Accept-threshold plus random pick, and the worst offender of the two is
+                // the random pick. getBestAttacksFromField() returns targets already
+                // sorted by score, then the AI throws that ordering away and takes a
+                // uniformly random element of the whole list -- not a tie-break among
+                // equals, an outright dice roll between a good attack and a mediocre one.
+                // MinSuicideDamage (0.75) then gates the list on "am I willing to lose 75%
+                // of my own value for this".
+                // Search AI must select deterministically by evaluated board score.
+                // Same pattern repeats twice more in this function and once in suicide().
                 if (ret.size() > 0 &&
                     (ret[0].z() >= -pUnit->getCoUnitValue() * m_minSuicideDamage ||
                      lockedUnit))
@@ -1174,6 +1295,19 @@ bool NormalAi::moveUnit(spGameAction &pAction, MoveUnitData *pUnitData, spQmlVec
             {
                 m_updatePoints.push_back(pUnit->getPosition());
                 m_updatePoints.push_back(pAction->getActionTarget());
+                // [AI: REPLACE - AI POLICY]
+                // Having chosen a destination tile, the AI now picks what to do there by
+                // walking a fixed preference order and taking the first thing that is
+                // legal: SUPPORTALL -> BUILD -> STEALTH -> UNSTEALTH -> PLACE -> FIRE ->
+                // CAPTURE -> WAIT. Nothing is scored. A unit standing on an enemy city
+                // with a good attack available captures or fires depending only on where
+                // those actions sit in this list.
+                // This is the per-tile twin of the performActionSteps() ladder and needs
+                // the same treatment: every legal action at the tile is a candidate, and
+                // the evaluator ranks them. Note also that destination and action are
+                // chosen in two separate stages here, so a tile is never selected
+                // *because* of the action it enables -- Search AI should score the
+                // (tile, action) pair as one candidate.
                 for (const auto &action : actions)
                 {
                     if (action.startsWith(ACTION_SUPPORTALL))
@@ -1227,6 +1361,11 @@ bool NormalAi::moveUnit(spGameAction &pAction, MoveUnitData *pUnitData, spQmlVec
                         if (pAction->canBePerformed())
                         {
                             spMarkedFieldData pData = pAction->getMarkedFieldStepData();
+                            // [AI: REPLACE - AI POLICY]
+                            // Placement target (mines, etc.) chosen uniformly at random
+                            // from every legal tile -- no scoring whatsoever. Where a mine
+                            // goes is a real positional decision; Search AI should
+                            // evaluate each legal placement tile.
                             QPoint point = pData->getPoints()->at(GlobalUtils::randIntBase(0, pData->getPoints()->size() - 1));
                             CoreAI::addSelectedFieldData(pAction, point);
                             emit sigPerformAction(pAction);
@@ -1243,6 +1382,9 @@ bool NormalAi::moveUnit(spGameAction &pAction, MoveUnitData *pUnitData, spQmlVec
                                                                     pAction->getActionTarget().y(), 1));
                     std::vector<QVector3D> ret;
                     getBestAttacksFromField(pUnit, pAction, ret, moveTargets);
+                    // [AI: REPLACE - AI POLICY]
+                    // Second instance of the accept-threshold + uniform random target
+                    // pick described above. Same replacement applies.
                     if (ret.size() > 0 && ret[0].z() >= -pUnit->getCoUnitValue() * m_minSuicideDamage)
                     {
                         qint32 selection = GlobalUtils::randIntBase(0, ret.size() - 1);
@@ -1287,6 +1429,12 @@ bool NormalAi::moveUnit(spGameAction &pAction, MoveUnitData *pUnitData, spQmlVec
     return false;
 }
 
+// [AI: REPLACE - AI POLICY]
+// The whole function is an escape hatch: "no good option was found, so attack
+// something." Search AI should not need it. If throwing the unit at a target really is
+// the best available line, that candidate wins on evaluated board score like any other;
+// if it is not, the unit should retreat or wait. A dedicated all-in path only exists
+// because the caller's ordering can leave a unit with no scored options at all.
 bool NormalAi::suicide(spGameAction &pAction, Unit *pUnit, UnitPathFindingSystem &turnPfs, qint32 movepoints)
 {
     AI_CONSOLE_PRINT("NormalAi::suicide", GameConsole::eDEBUG);
@@ -1295,6 +1443,8 @@ bool NormalAi::suicide(spGameAction &pAction, Unit *pUnit, UnitPathFindingSystem
     std::vector<QVector3D> ret;
     std::vector<QVector3D> moveTargetFields;
     CoreAI::getBestTarget(pUnit, pAction, &turnPfs, ret, moveTargetFields, movepoints + 1);
+    // [AI: REPLACE - AI POLICY]
+    // Third instance of accept-threshold + uniform random target pick.
     if (ret.size() > 0 && ret[0].z() >= -pUnit->getCoUnitValue() * m_minSuicideDamage)
     {
         qint32 selection = GlobalUtils::randIntBase(0, ret.size() - 1);
@@ -1317,6 +1467,19 @@ bool NormalAi::suicide(spGameAction &pAction, Unit *pUnit, UnitPathFindingSystem
     return false;
 }
 
+// [AI: REPLACE - AI POLICY]
+// Single-objective retreat: minimise counter damage to *this one unit*, tie-break on
+// raw distance to the original target. It is the clearest example of action-shaped
+// scoring in the movement code (AI_Design_Notes_Consolidated.md section 6.1) -- nothing
+// about the rest of the board enters the comparison, so a tile that is 1 point safer
+// for this unit always beats a tile that shields an expensive ally, holds a chokepoint,
+// or keeps a capture in reach.
+// Under a board-shaped evaluator this function disappears: "retreat" is just the
+// candidate set of reachable tiles, scored like every other candidate, and the
+// defensive term is the collapsed sum from section 6.2 rather than one unit's damage.
+// The reachable-tile enumeration and the counter-damage call are still reusable.
+// Note the integer casts in the comparisons quantise scores to whole funds, which is
+// what makes the allFieldsEqual signal (used to trigger suicide) fire as often as it does.
 std::tuple<QPoint, float, bool> NormalAi::moveToSafety(MoveUnitData &unitData, UnitPathFindingSystem &turnPfs, QPoint target,
                                                        spQmlVectorBuilding &pBuildings, spQmlVectorBuilding &pEnemyBuildings,
                                                        qint32 movePoints)
@@ -1365,6 +1528,14 @@ std::tuple<QPoint, float, bool> NormalAi::moveToSafety(MoveUnitData &unitData, U
     return std::tuple<QPoint, float, bool>(ret, leastDamageField, allFieldsEqual);
 }
 
+// [AI: REPLACE - AI POLICY]
+// Walks the path toward the target and stops at the furthest tile whose counter damage
+// is under a risk budget of MinMovementDamage (0.3) x the unit's own value. Two
+// heuristics in one: the 30%-of-my-value risk tolerance, and the rule that only tiles
+// *on the already-chosen path* are considered -- so the unit can advance or stop, but
+// never step aside.
+// Search AI should score all reachable tiles as candidates, and let acceptable risk fall
+// out of the board comparison instead of a fixed fraction of unit cost.
 qint32 NormalAi::getMoveTargetField(MoveUnitData &unitData, UnitPathFindingSystem &turnPfs,
                                     std::vector<QPoint> &movePath, spQmlVectorBuilding &pBuildings, spQmlVectorBuilding &pEnemyBuildings,
                                     qint32 movePoints)
@@ -1424,6 +1595,21 @@ qint32 NormalAi::getBestAttackTarget(MoveUnitData &unitData, std::vector<CoreAI:
         qint32 minfireRange = pUnit->getMinRange(moveTarget);
         qint32 fundsDamage = 0;
         float bonusDamage = 0.0f;
+        // [AI: REPLACE - AI POLICY]
+        // The multiplier stack below is Normal AI's attack evaluation. Starting from a
+        // real quantity (fundsDamage) it applies four tuned factors in sequence:
+        //   OwnIndirectAttackValue (x2)  - I am an indirect, so value this more
+        //   EnemyKillBonus         (x2)  - this attack kills, so value it more
+        //   EnemyIndirectBonus     (x3)  - the victim is an indirect, so value it more
+        //   OwnProdctionMalus  (-5000)   - do not park on my own factory
+        // These compound multiplicatively: killing an enemy artillery from an indirect
+        // scores 12x its funds value. The intent behind each is defensible, but as
+        // multipliers on a funds figure they leave the score in no meaningful unit, so it
+        // cannot be compared against capture value, income, or positional value.
+        // Search AI should express each of these as a funds-denominated term in the
+        // evaluator (kills remove future damage output; indirects are worth more because
+        // of what they deny) and sum them, per AI_Design_Notes_Consolidated.md section 4
+        // suggestion 1 -- one common unit of measure.
         if (pEnemy != nullptr)
         {
             float currentHp = pEnemy->getHp();
@@ -1466,6 +1652,16 @@ qint32 NormalAi::getBestAttackTarget(MoveUnitData &unitData, std::vector<CoreAI:
         fundsDamage -= counterDamage;
         Terrain *pTerrain = m_pMap->getTerrain(static_cast<qint32>(ret[i].x), static_cast<qint32>(ret[i].y));
         qint32 targetDefense = pTerrain->getDefense(pUnit);
+        // [AI: REPLACE - AI POLICY]
+        // Two admission filters before a target may be considered at all:
+        // MinAttackFunds scales a floor by the attacker's own cost, and MinHpDamage
+        // (-2.0) rejects any exchange where the AI loses more than 2 HP more than it
+        // deals. The second is a flat refusal to take unfavourable HP trades regardless
+        // of what the trade accomplishes -- it blocks exactly the deliberate bad-looking
+        // trades that AI_Design_Notes_Consolidated.md section 4 (opportunity cost /
+        // denial value) argues are sometimes correct.
+        // Search AI should let unfavourable trades be scored and rejected on their merits,
+        // not filtered out before scoring.
         if (fundsDamage >= minFundsDamage &&
             ret[i].hpDamageDifference >= m_minHpDamage)
         {
@@ -1486,6 +1682,21 @@ qint32 NormalAi::getBestAttackTarget(MoveUnitData &unitData, std::vector<CoreAI:
     return target;
 }
 
+// [AI: INVESTIGATE]
+// Estimates "if I attack this enemy, how much extra damage can my other unmoved units
+// pile onto the same target." The *idea* is sound and is the focus-fire behaviour
+// AI_Design_Notes_Consolidated.md section 6.1 says should emerge for free from
+// sequential board-shaped evaluation -- so Search AI likely gets this without a
+// dedicated function.
+// The implementation carries three heuristics that should not be inherited:
+//   - the CheapUnitValue (3000) cut-off deciding which other enemies "count" as
+//     competing for the supporting unit's attention,
+//   - dividing the support damage by (competing targets + 1), the ad-hoc "split
+//     attention" discount criticised in section 2 -- the well-formed version is target
+//     reservation during the sequential pass (section 6.3),
+//   - the SupportDamageBonus multiplier on top.
+// It also assumes the supporting unit will actually choose this target, which nothing
+// guarantees.
 float NormalAi::getOwnSupportDamage(Unit *pUnit, QPoint moveTarget, Unit *pEnemy, float &hpDamage) const
 {
     float supportDamage = 0;
@@ -1546,6 +1757,19 @@ float NormalAi::getOwnSupportDamage(Unit *pUnit, QPoint moveTarget, Unit *pEnemy
     return supportDamage;
 }
 
+// [AI: REPLACE - AI POLICY]
+// Multiplier applied to attack value when the target is mid-capture. It computes
+// something genuinely useful -- how many turns the capture is delayed by the damage --
+// but then converts that into a bare multiplier through a stack of tuned constants:
+// AntiCaptureBonus (21x) for killing a capturer about to finish, AntiCaptureHqBonus
+// (50x) if the building is our HQ, plus literal 0.8f/1.0f cases and a
+// Reduction/Divider pair that rescales the result when it grows too large.
+// The 20-capture-point figure is also hard-coded rather than read from the building.
+// Search AI has the right quantity in the wrong form. Delay-a-capture should be priced
+// as denied income (income x turns delayed, AI_Design_Notes_Consolidated.md section 4
+// point 2), and losing the HQ belongs in the clamped victory term (section 4
+// suggestion 2) -- a 50x multiplier can still be outvoted by accumulated small terms,
+// a clamp cannot.
 float NormalAi::calculateCaptureBonus(Unit *pUnit, float newLife) const
 {
     float ret = 1.0f;
@@ -1599,6 +1823,23 @@ float NormalAi::calculateCaptureBonus(Unit *pUnit, float newLife) const
     return ret;
 }
 
+// [AI: REPLACE - AI POLICY]
+// This is Normal AI's threat map, and it is the function
+// AI_Design_Notes_Consolidated.md section 2 calls out by name for violating the
+// "threat describes capability, evaluation decides how much I care" boundary. It is
+// called from moveToSafety, getMoveTargetField and getBestAttackTarget, so the value
+// judgments baked in here contaminate every movement and attack decision.
+// Specific problems, each marked individually below:
+//   - EnemyCounterDamageMultiplier inflating predicted enemy damage,
+//   - the NotAttackableDamage threshold gating whether a threat is counted at all,
+//   - the 0.5x "this enemy has other targets so it probably won't shoot me" discount,
+//   - influence and building damage summed into the same return value, so callers
+//     cannot tell threat from positional preference (double-counting, section 4).
+// Search AI needs this split in two: a threat map that reports, per tile, which enemies
+// can reach it and for how much expected funds damage (a real struct, section 2 -- note
+// this code repurposes QRectF as a float box via .x()/.moveLeft(), which the notes say
+// not to copy), and an evaluator that decides what that threat is worth.
+// The underlying reachability + calcVirtuelUnitDamage machinery is reusable as-is.
 float NormalAi::calculateCounterDamage(MoveUnitData &curUnitData, QPoint newPosition,
                                        Unit *pEnemyUnit, float enemyTakenDamage,
                                        spQmlVectorBuilding &pBuildings, spQmlVectorBuilding &pEnemyBuildings,
@@ -1644,6 +1885,14 @@ float NormalAi::calculateCounterDamage(MoveUnitData &curUnitData, QPoint newPosi
                 {
                     enemyDamage += enemyTakenDamage;
                 }
+                // [AI: REPLACE - AI POLICY]
+                // Scales the damage this AI expects to have already dealt to the enemy
+                // (virtualDamageData, itself a discounted estimate from calcVirtualDamage)
+                // by a tuned 10x, then uses the result to decide the enemy will be dead
+                // and cannot retaliate. A pessimism/optimism dial dressed as a prediction.
+                // Search AI should track expected damage already committed against each
+                // target honestly (target reservation, section 6.3) rather than
+                // multiplying an estimate by a constant.
                 enemyDamage *= m_enemyCounterDamageMultiplier;
                 if (enemyDamage < pNextEnemy->getHp() * Unit::MAX_UNIT_HP)
                 {
@@ -1665,6 +1914,19 @@ float NormalAi::calculateCounterDamage(MoveUnitData &curUnitData, QPoint newPosi
                                 unitDamageData.insert_or_assign(pNextEnemy->getUnitID(), damageData.x() * Unit::MAX_UNIT_HP / pNextEnemy->getHp());
                             }
                         }
+                        // [AI: REPLACE - AI POLICY]
+                        // Threat below NotAttackableDamage (25%) is treated as no threat.
+                        // Above it, the loop below discounts the threat by up to 50% per
+                        // *other* friendly unit the enemy could also shoot -- the "split
+                        // attention between multiple targets" guess. Both are value
+                        // judgments living inside threat computation, and the discount is
+                        // cumulative across own units, so a unit standing in a crowd can
+                        // have its predicted incoming damage driven arbitrarily close to
+                        // zero and will happily walk into fire.
+                        // Search AI: threat reports what each enemy can do to this tile.
+                        // Which target the enemy will actually pick is a prediction that
+                        // belongs in the opponent-reply model (section 5 point 2), and
+                        // over-commitment is handled by target reservation (section 6.3).
                         if (damageData.x() >= m_notAttackableDamage)
                         {
                             for (auto &unitData : m_OwnUnits)
@@ -1721,6 +1983,10 @@ float NormalAi::calculateCounterDamage(MoveUnitData &curUnitData, QPoint newPosi
                         }
                         qint32 enemyIslandIdx = getIslandIndex(pNextEnemy.get());
                         qint32 enemyIsland = getIsland(pNextEnemy.get());
+                        // [AI: REPLACE - AI POLICY]
+                        // Same NotAttackableDamage gate and same cumulative 50%
+                        // split-attention discount as the indirect branch above, repeated
+                        // for move-and-fire attackers. Replace together.
                         if (found &&
                             damageData.x() >= m_notAttackableDamage)
                         {
@@ -1767,6 +2033,19 @@ float NormalAi::calculateCounterDamage(MoveUnitData &curUnitData, QPoint newPosi
             }
         }
     }
+    // [AI: REPLACE - AI POLICY]
+    // Three different quantities are summed into one number and returned as "counter
+    // damage": actual predicted enemy retaliation, damage from enemy buildings/mines,
+    // and a synthetic penalty derived from the influence map. Callers
+    // (moveToSafety, getMoveTargetField, getBestAttackTarget) then compare that total
+    // against funds thresholds as if it were all retaliation.
+    // Folding influence into threat is the double-counting failure of
+    // AI_Design_Notes_Consolidated.md section 4: influence already describes territorial
+    // control, and mixing it in here means territory is priced once inside the threat
+    // figure and again wherever positional value is scored. Search AI must keep threat,
+    // influence and evaluation as three separate outputs and combine them only in the
+    // evaluator, with per-category subtotals retained for debugging (section 4
+    // suggestion 3 -- the AI_CONSOLE_PRINT below is the right instinct, keep that part).
     float buildingCounterDamage = calculateCounteBuildingDamage(pUnit, newPosition, pBuildings, pEnemyBuildings);
     float influenceCounterDamage = getMapInfluenceModifier(pUnit, newPosition.x(), newPosition.y());
     float totalCounterDamage = counterDamage + influenceCounterDamage + buildingCounterDamage;
@@ -1782,6 +2061,13 @@ float NormalAi::calculateCounterDamage(MoveUnitData &curUnitData, QPoint newPosi
 float NormalAi::calculateCounteBuildingDamage(Unit *pUnit, QPoint newPosition, spQmlVectorBuilding &pBuildings, spQmlVectorBuilding &pEnemyBuildings) const
 {
     float counterDamage = 0.0f;
+    // [AI: INVESTIGATE]
+    // Existing bug, not a heuristic: the same loop over pEnemyBuildings is written
+    // twice, so every enemy building's damage is counted double, and the pBuildings
+    // parameter is never used. The second loop was presumably meant to iterate
+    // pBuildings. Do not port the doubling; check what the intended second loop was
+    // (own buildings shouldn't threaten us, so it may simply be dead code) before
+    // treating any Normal AI positioning behaviour as a reference.
     for (auto &pBuilding : pEnemyBuildings->getVector())
     {
         counterDamage += calcBuildingDamage(pUnit, newPosition, pBuilding.get());
@@ -1798,6 +2084,12 @@ float NormalAi::calculateCounteBuildingDamage(Unit *pUnit, QPoint newPosition, s
         if (m_pMap->onMap(pos.x(), pos.y()))
         {
             Unit *pMine = m_pMap->getTerrain(pos.x(), pos.y())->getUnit();
+            // [AI: INVESTIGATE]
+            // Hard-coded unit ID and a flat WatermineDamage (4.0) penalty for being
+            // within 2 tiles of one, added into the same total as real predicted
+            // retaliation. Search AI should get mine danger from the threat map like any
+            // other source of expected damage, keyed off unit properties rather than a
+            // literal "WATERMINE" string.
             if (pMine != nullptr &&
                 !pMine->isStealthed(m_pPlayer) &&
                 pMine->getUnitID() == "WATERMINE")
@@ -1814,6 +2106,15 @@ void NormalAi::updateAllUnitData(spQmlVectorUnit &pUnits, spQmlVectorBuilding &p
     AI_CONSOLE_PRINT("NormalAi::updateAllUnitData()", GameConsole::eDEBUG);
     bool initial = m_EnemyUnits.size() == 0;
     spQmlVectorUnit enemyUnits = m_pPlayer->getSpEnemyUnits();
+    // [AI: INVESTIGATE]
+    // Discards enemy units further than EnemyPruneRange (3) from any own unit and
+    // OwnBuildingPruneRange (10) from any own building, before any analysis runs. This is
+    // a performance measure, but it silently deletes board state: a pruned enemy cannot
+    // appear in the threat map, cannot influence production, and cannot be counted by
+    // anything downstream, so the AI is blind to a force massing just outside the radius.
+    // Search AI will need some bound on cost too, but pruning must not change what the
+    // evaluator can see. Decide deliberately: prune candidate *moves* (section 5,
+    // candidate pruning per unit) rather than pruning the world model.
     enemyUnits->pruneEnemies(pUnits.get(), pBuildings.get(), m_ownBuildingPruneRange, m_enemyPruneRange);
     
     // Will create an Island Map of all movable tiles on map for all units
@@ -1822,6 +2123,16 @@ void NormalAi::updateAllUnitData(spQmlVectorUnit &pUnits, spQmlVectorBuilding &p
 
     updateUnitData(pUnits, m_OwnUnits, false, m_EnemyUnits);
     updateUnitData(enemyUnits, m_EnemyUnits, true, m_OwnUnits);
+    // [AI: REPLACE - AI POLICY]
+    // Move ordering: units furthest from the enemy resolve first. Because every step in
+    // performActionSteps() iterates m_OwnUnits in this order and returns on the first
+    // success, this ordering materially changes the turn -- it is a policy, not a detail.
+    // AI_Design_Notes_Consolidated.md section 6.3 identifies ordering as the one
+    // coordination gap a board-shaped evaluator does not close on its own, and prescribes
+    // the opposite rule: resolve units in decreasing order of cost/value so expensive
+    // units commit first and cheap ones can react to them (screen, support, finish kills).
+    // Keep the hook, replace the comparator; making the sequence itself searchable is the
+    // v2 upgrade.
     sortUnitsFarFromEnemyFirst(m_OwnUnits, enemyUnits);
     if (initial)
     {
@@ -1972,6 +2283,16 @@ void NormalAi::createUnitData(spUnit pUnit, MoveUnitData &data, bool enemy, doub
         {
             data.actions = pUnit->getActionList();
         }
+        // [AI: REPLACE - AI POLICY]
+        // Each unit's pathfinder is explored with its movement inflated by
+        // InfluenceUnitRange (1.75x), minus 1 if the unit already moved. The multiplier
+        // is a stand-in for "roughly how far this unit projects power over the next
+        // turn or two", and the -1 is an unexplained nudge.
+        // Search AI needs the same idea expressed honestly: threat and influence should
+        // be computed over real reachability per turn (section 3 -- decay by movement
+        // cost, weight by cost x hp fraction), not by scaling one turn's move points by
+        // a tuned factor. Note this inflated pfs is also what feeds the influence map
+        // and calculateCounterDamage, so the fudge propagates widely.
         if (pUnit->getHasMoved())
         {
             // After the unit has moved, it should have slightly less influence--hence the "-1"
@@ -1986,6 +2307,20 @@ void NormalAi::createUnitData(spUnit pUnit, MoveUnitData &data, bool enemy, doub
     }
 }
 
+// [AI: REPLACE - AI POLICY]
+// Pre-computes, once per turn, how much damage each enemy unit "will probably" take
+// from all own units, and stores it in enemyData.virtualDamageData -- which
+// calculateCounterDamage then uses to decide the enemy may already be dead and cannot
+// retaliate. Three heuristics stack up inside:
+//   - maxDistance = 2, a guess that units matter within two turns of movement,
+//   - damage / (movementPoints / maxDistance + 1), an ad-hoc distance discount,
+//   - EnemyUnitCountDamageReductionMultiplier (0.5) x damage / attacks.size(),
+//     spreading each unit's output evenly over everything it could hit.
+// The result is a fiction: it assumes every unit attacks, spread thinly over all
+// reachable targets, and no unit's actual choice is consulted.
+// Search AI should get this from committed-damage bookkeeping during the sequential
+// pass (target reservation, AI_Design_Notes_Consolidated.md section 6.3) -- record what
+// has actually been decided, not an averaged prediction of what might happen.
 void NormalAi::calcVirtualDamage()
 {
     for (auto &ownUnit : m_OwnUnits)
@@ -2062,6 +2397,18 @@ void NormalAi::calcVirtualDamage()
     }
 }
 
+// [AI: REPLACE - AI POLICY]
+// Converts the influence map into a pseudo-damage figure so it can be added to counter
+// damage: normalises own vs enemy influence into a -1..1 ratio, ignores it entirely
+// below InfluenceIgnoreValue (0.2), then multiplies by the unit's value and
+// InfluenceMultiplier (2.0) to produce "funds".
+// This is where influence stops describing territorial control and starts asserting
+// value, which AI_Design_Notes_Consolidated.md section 3 and 4 keep separate. The
+// dead-zone threshold and the x2 are pure tuning, and the output is only in funds by
+// construction, not by measurement.
+// Search AI should read influence as a feature and weight it in the evaluator, where
+// its contribution is visible and comparable, rather than laundering it into the threat
+// figure. The InfluenceFrontMap itself is reusable -- it is this conversion that is not.
 float NormalAi::getMapInfluenceModifier(Unit *pUnit, qint32 x, qint32 y) const
 {
     const auto *info = m_InfluenceFrontMap.getInfluenceInfo(x, y);
@@ -2109,6 +2456,7 @@ bool NormalAi::buildUnits(spQmlVectorBuilding &pBuildings, spQmlVectorUnit &pUni
         return executed;
     }
 
+    // Everything below this comment may be dead code if buildUnit always returns true
     qint32 enemeyCount = 0;
     for (qint32 i = 0; i < m_pMap->getPlayerCount(); i++)
     {
@@ -2154,6 +2502,22 @@ bool NormalAi::buildUnits(spQmlVectorBuilding &pBuildings, spQmlVectorUnit &pUni
     {
         productionBuildings = m_maxProductionBuildings;
     }
+    // [AI: REPLACE - AI POLICY]
+    // Everything from here to the end of the fundsPerFactory ladder is a price-bracket
+    // policy: it decides how much to spend per factory this turn, which then drives
+    // calcCostScore() and effectively picks the *tier* of unit before any unit has been
+    // evaluated. A 0-100 dice roll selects between the brackets via SpamLightUnitChance
+    // (30), SpamMediumUnitChance (30) and SpamInfantryChance (50), so with identical
+    // board state the AI builds a light unit, an expensive unit, or infantry depending on
+    // the roll. This is the same class of problem as the chance table in
+    // SimpleProductionSystem::addItemToBuildDistribution, one layer up.
+    // The bracket boundaries themselves (SpamingFunds 7500 x FundsPerBuildingFactorA/B/C,
+    // CappingFunds, CappedFunds) are tuned constants unrelated to the map.
+    // Search AI should not pre-select a price bracket at all. Score each buildable unit
+    // by the board it produces (including projected capture income for transports,
+    // AI_Design_Notes_Consolidated.md section 6.4) and let cost enter as one funds-
+    // denominated term among others. Saving up for an expensive unit is a conclusion,
+    // not a mode.
     // calc average costs if we would build same cost units on every building
     float fundsPerFactory = funds - m_cappedFunds * (productionBuildings - 1) * m_fundsPerBuildingFactorD;
     AI_CONSOLE_PRINT("NormalAI: Funds: " + QString::number(funds) + " funds for the next factory: " + QString::number(fundsPerFactory), GameConsole::eDEBUG);
@@ -2227,6 +2591,15 @@ bool NormalAi::buildUnits(spQmlVectorBuilding &pBuildings, spQmlVectorUnit &pUni
     std::vector<qint32> unitIDx;
     std::vector<float> scores;
     std::vector<bool> transporters;
+    // [AI: REPLACE - AI POLICY]
+    // "variance" is a deliberate unpredictability band: every candidate scoring within
+    // `variance` of the best is kept in a shortlist, and one is then chosen at random
+    // (see the randIntBase call after this loop). The band widens with the day number
+    // from StartDayScoreVariancer (5) up to MaxDayScoreVariancer (10).
+    // This is unpredictability for its own sake -- good for a human opponent, directly
+    // opposed to a search AI, which must build the unit its evaluator ranks highest and
+    // must produce the same decision from the same board every time (otherwise the
+    // evaluator cannot be debugged, tuned, or searched over).
     float variance = m_pMap->getCurrentDay() - 1 + m_startDayScoreVariancer;
     if (variance > m_maxDayScoreVariancer)
     {
@@ -2262,6 +2635,12 @@ bool NormalAi::buildUnits(spQmlVectorBuilding &pBuildings, spQmlVectorUnit &pUni
                                                                   pUnits, countData.transportTargets,
                                                                   pEnemyUnits, pEnemyBuildings,
                                                                   attackCount, data);
+                            // [AI: INVESTIGATE]
+                            // Hard-coded building ID: anything produced at a harbour is
+                            // pre-labelled a transporter, before createUnitBuildData() has
+                            // decided whether the unit actually has no weapons. Search AI
+                            // should classify from unit properties, not the building's
+                            // string ID (which also breaks for modded buildings).
                             bool isTransporter = pBuilding->getBuildingID() == "HARBOUR";
                             if (unitIdx >= 0)
                             {
@@ -2359,6 +2738,14 @@ bool NormalAi::buildUnits(spQmlVectorBuilding &pBuildings, spQmlVectorUnit &pUni
 
     if (buildingIdx.size() > 0)
     {
+        // [AI: REPLACE - AI POLICY]
+        // The payoff of the `variance` band above: the final production choice is a
+        // uniform random pick from every (building, unit) pair that scored within the
+        // band of the best. The evaluator's ranking is computed and then discarded.
+        // This is the decision the user's note on
+        // SimpleProductionSystem::addItemToBuildDistribution describes from the other
+        // end -- weights are accumulated there, and the dice are rolled here.
+        // Search AI: take the argmax, deterministically.
         qint32 item = GlobalUtils::randIntBase(0, buildingIdx.size() - 1);
         Building *pBuilding = pBuildings->at(buildingIdx[item]);
         pAction->setTarget(QPoint(pBuilding->Building::getX(), pBuilding->Building::getY()));
@@ -2533,6 +2920,15 @@ void NormalAi::createUnitBuildData(qint32 x, qint32 y, UnitBuildData &unitBuildD
     }
 }
 
+// [AI: INVESTIGATE]
+// Counts, per enemy unit, how many of our units can hit it for high / mid / low damage,
+// using base weapon damage only (no terrain, no CO, no luck). The counts are genuinely
+// useful board information -- "we have no answer to their bombers" -- and Search AI
+// wants something like it as a matchup-coverage feature.
+// What should not be inherited is the bucketing: HighDamage (75), MidDamage (55) and
+// NotAttackableDamage (25) collapse a continuous quantity into three tuned bins, and
+// everything downstream in calcExpectedFundsDamage reasons about bin counts rather than
+// actual damage. A 74% matchup and a 26% matchup land in the same bucket.
 void NormalAi::getEnemyDamageCounts(spQmlVectorUnit &pUnits, spQmlVectorUnit &pEnemyUnits, std::vector<NotAttackableData> &attackCount)
 {
     WeaponManager *pWeaponManager = WeaponManager::getInstance();
@@ -2616,6 +3012,30 @@ qint32 NormalAi::getClosestTargetDistance(qint32 posX, qint32 posY, Unit &dummy,
     return minDistance;
 }
 
+// [AI: REPLACE - AI POLICY]
+// The densest heuristic in the file, and the core of Normal AI's production decision:
+// "if I built this unit here, how much enemy value could it expect to threaten?"
+// It walks every enemy unit and accumulates a score through roughly a dozen tuned
+// adjustments, among them:
+//   - ownRange/enemyRange approximated as movement + firerange, or their average x0.5
+//     when the unit cannot move-and-fire,
+//   - MaxOverkillBonus rescaling damage that exceeds the target's remaining value,
+//   - a (range + SmoothingValue) / (range + SmoothingValue) ratio capped at
+//     MaxDistanceMultiplier, standing in for "who shoots first",
+//   - DirectIndirectUnitBonusFactor applied when the unit is of the type we currently
+//     have too few of,
+//   - SameIsland / DifferentIsland distance bonuses with two more caps on top,
+//   - High/Mid/Low/VeryLowDamageBonus bin weights, then
+//     CurrentlyNotAttackableBonus applied once or squared depending on which bins
+//     are empty,
+//   - IndirectUnitAttackCountMalus, a loop that scales the whole result down if the
+//     unit can attack too small a fraction of the enemy army.
+// Every one of these is a proxy standing in for a simulation the AI never runs, and
+// they compound, so the output is not in any interpretable unit.
+// Search AI should answer the same question directly: hypothesise the unit on the board
+// and evaluate the resulting state with the same evaluator used for movement, including
+// projected capture income (section 6.4). The one piece worth keeping is the framing --
+// production is scored by expected board improvement per funds spent.
 NormalAi::ExpectedFundsData NormalAi::calcExpectedFundsDamage(qint32 posX, qint32 posY, Unit &dummy, spQmlVectorUnit &pEnemyUnits, const std::vector<NotAttackableData> &attackCount, float bonusFactor, float myMovepoints)
 {
     ExpectedFundsData ret;
@@ -2897,6 +3317,17 @@ NormalAi::ExpectedFundsData NormalAi::calcExpectedFundsDamage(qint32 posX, qint3
     return ret;
 }
 
+// [AI: INVESTIGATE]
+// Asks "against the similarly-priced units this factory could build, how does this unit
+// match up on raw damage" -- a rock-paper-scissors check against the *build list*, not
+// against anything the enemy actually owns. The underlying question (are we buying a
+// unit that loses to what the opponent can field) is worth keeping, but Search AI should
+// ask it about the observed enemy army and their production capability, not about a
+// hypothetical price bracket.
+// Heuristics not to inherit: TargetPriceDifference (0.35) defining "similar cost",
+// SameFundsMatchUpMovementMalus (0.3) penalising slower units, NotAttackableDamage as a
+// zeroing floor, normalisation by DAMAGE_100/2, and SameFundsMatchUpNoMatchUpValue (0.5)
+// returned as a neutral guess when nothing comparable exists.
 float NormalAi::calcSameFundsMatchUpScore(Unit &dummy, const QStringList &buildList)
 {
     auto dummyValue = dummy.getUnitValue();
@@ -2956,6 +3387,11 @@ void NormalAi::getTransporterData(UnitBuildData &unitBuildData, Unit &dummy, spQ
     qint32 loadingPlace = dummy.getLoadingPlace();
     qint32 smallTransporterCount = 0;
     qint32 transporterCount = 0;
+    // [AI: REPLACE - AI POLICY]
+    // maxDayDistance (6) is a hard cut-off: units more than six turns of travel away are
+    // not considered as passengers at all. Search AI should let distance discount a
+    // transport's value continuously via eta (AI_Design_Notes_Consolidated.md section
+    // 6.4), not exclude candidates past a fixed horizon.
     static constexpr float maxDayDistance = 6.0f;
     for (auto &pUnit : pUnits->getVector())
     {
@@ -2965,6 +3401,15 @@ void NormalAi::getTransporterData(UnitBuildData &unitBuildData, Unit &dummy, spQ
             relevantUnits->append(pUnit.get());
         }
         qint32 place = pUnit->getLoadingPlace();
+        // [AI: INVESTIGATE]
+        // Existing bug, not a heuristic: `place == 1` is nested inside `place > 1`, so it
+        // can never be true and smallTransporterCount is always 0. That makes the
+        // small-transporter branch in calcTransporterScore() fire on
+        // `pUnits->size() / 1 > UnitToSmallTransporterRatio`, i.e. for any army above 5
+        // units regardless of how many small transports already exist -- and
+        // SmallTransporterBonus is then awarded unconditionally.
+        // Do not port this; it means Normal AI's observed transport behaviour is not
+        // evidence of what the intended rule would do.
         if (place > 1)
         {
             if (place == 1)
@@ -3021,6 +3466,23 @@ void NormalAi::getTransporterData(UnitBuildData &unitBuildData, Unit &dummy, spQ
                                        actions.contains(CoreAI::ACTION_SUPPORTALL_RATION);
 }
 
+// [AI: REPLACE - AI POLICY]
+// Decides whether to build a transport from ratios and flat bonuses:
+// UnitToSmallTransporterRatio (5) units per small transport, SmallTransporterBonus (30),
+// FlyingTransporterBonus (15) awarded to anything whose score already exceeded
+// MinFlyingTransportScoreForBonus, ProducingTransportRatioBonus, AdditionalLoadingUnitBonus
+// per loading place, NoTransporterBonus (70) per unloaded passenger, and
+// ProducingTransportMinLoadingTransportRatio (4.5) below which the unit is banned outright
+// via NO_BUILD_SCORE.
+// AI_Design_Notes_Consolidated.md section 6.4 singles out the ratio test at the top of
+// this function as the sharpest contrast with the intended design: it is blind to map
+// geometry, producing the same transport mix on a cramped four-city map as on a sprawling
+// archipelago. The replacement is projectedCaptureIncome -- score a hypothetical transport
+// by the delta in capture eta it creates, which reads the map for free and needs no
+// per-map tuning.
+// (Minor: `score == 0.0f` on the first line is always true, score having just been
+// initialised to 0; and smallTransporterCount is always 0 owing to the getTransporterData
+// bug marked above, so that branch is effectively unconditional for armies over 5 units.)
 float NormalAi::calcTransporterScore(UnitBuildData &unitBuildData, spQmlVectorUnit &pUnits, std::vector<float> &data)
 {
     float score = 0.0f;
@@ -3087,6 +3549,27 @@ float NormalAi::calcTransporterScore(UnitBuildData &unitBuildData, spQmlVectorUn
     return score;
 }
 
+// [AI: REPLACE - AI POLICY]
+// Normal AI's production evaluation function: a weighted sum of ~10 heuristic terms,
+// most of them army-composition ratios rather than statements about the board.
+//   - direct/indirect balance pushed toward DirectIndirectRatio (5) with four
+//     asymmetric bonus/malus constants,
+//   - an infantry bonus driven by MinInfantryCount, LowInfantryRatio and
+//     LowOwnBuildingEnemyBuildingRatio,
+//   - MovementpointBonus (6) per move point, flat,
+//   - CurrentlyNotAttackableScoreBonus, DamageToUnitCostRatioBonus, CounterDamageBonus,
+//     AttackCountBonus, SameFundsMatchUpBonus, CoUnitBuffBonus, TurnOneDmageMalus,
+//     NearEnemyBonus / distance,
+//   - a hard NO_BUILD_SCORE veto for any unit with no attack targets, and
+//   - a final multiply by BaseGameInputIF::getUnitBuildValue (the per-map/per-mod
+//     designer weight -- worth honouring as a constraint, but it is a preference,
+//     not board state).
+// The structure is right (weighted linear sum, section 4) and the AI_CONSOLE_PRINT
+// breakdown is exactly the debugging affordance section 4 suggestion 3 asks for.
+// What has to change is the terms: they are unitless ratios tuned against each other,
+// so they cannot be compared with, or traded off against, the funds-denominated terms
+// the movement evaluator will produce. Search AI should re-derive these as
+// funds-equivalent contributions to a hypothesised board.
 float NormalAi::calcBuildScore(std::vector<float> &data, UnitBuildData &unitBuildData)
 {
     float score = 0;
@@ -3199,6 +3682,14 @@ float NormalAi::calcBuildScore(std::vector<float> &data, UnitBuildData &unitBuil
     return score;
 }
 
+// [AI: INVESTIGATE]
+// Supply-unit production from two ratios: build one if supply units are under
+// MaxSupplyUnitRatio (5%) of the army, valued at CanSupplyBonus (10) per unit needing
+// supply beyond what existing supply units cover, where each is assumed to serve
+// AverageSupplySupport (8) units.
+// The "8 units per APC" figure is a guess standing in for a reachability question --
+// whether a supply unit can actually get to the units that need it, given the map.
+// Search AI should answer that with the pathfinder, as it does for capture eta.
 float NormalAi::calcSupplyScore(std::vector<float> &data, UnitBuildData &unitBuildData)
 {
     float score = 0.0f;
@@ -3211,6 +3702,17 @@ float NormalAi::calcSupplyScore(std::vector<float> &data, UnitBuildData &unitBui
     return score;
 }
 
+// [AI: REPLACE - AI POLICY]
+// Scores a unit purely on how close its cost sits to the price bracket chosen by the
+// dice roll in buildUnits() -- a five-branch ladder over CheapUnitRatio (1.8),
+// NormalUnitRatio (1.0), SuperiorityRatio (1.8) and TargetPriceDifference (0.35), with
+// separate multipliers per bracket and two bare literals (outScore 0.25, inScore 0.5).
+// Cost is a real input to production, but this asks "does this unit cost about what I
+// decided to spend", never "is this unit worth its price on this board". A unit that
+// wins the game is penalised for being 40% off the target bracket.
+// Search AI should treat cost as a funds term in the same currency as everything else:
+// value produced minus funds spent, with the opportunity cost of not banking the money
+// for next turn -- no brackets.
 float NormalAi::calcCostScore(std::vector<float> &data, UnitBuildData &unitBuildData)
 {
     float score = 0;

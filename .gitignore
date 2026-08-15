@@ -31,3 +31,6 @@ CMakeLists.txt.user
 /distribution/*.dat
 /distribution/logs
 /distribution/savegames
+
+# AI Setting files
+/.claude

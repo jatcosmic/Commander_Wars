@@ -128,8 +128,16 @@ var COREAI =
         var co2 = player.getCO(1);
         if (buildInitialInfantry)
         {
+            // [AI: REPLACE - AI POLICY]
+            // Existing AI forces six initial Infantry.
+            // Search AI should determine initial production based on game state.
             system.addInitialProduction(["INFANTRY"], 6);
         }
+
+        // [AI: REPLACE - AI POLICY]
+        // Registers the predefined Infantry production distribution used by Normal AI.
+        // The group/unit probabilities and distribution weights should not drive
+        // the search AI's production decisions.
         system.addItemToBuildDistribution(COREAI.infantryGroup[0],                                                       // group name
                                           COREAI.infantryGroup[1],                                                       // units build by the group
                                           COREAI.infantryGroup[2],                                                       // chance of the unit in this group to be build
@@ -137,13 +145,26 @@ var COREAI =
                                           COREAI.infantryGroup[4],                                                       // build mode used to detect if the group is enabled or not to the army distribution
                                           COREAI.infantryGroup[5],                                                       // custom condition to enable/disable group removing it to the army distribution
                                           COREAI.infantryGroup[6]);
+
+        // [AI: INVESTIGATE]
+        // Determines how existing AI modifies ground-unit production.
+        // May contain reusable game-state information or Normal AI heuristics.
         var groundModifer = COREAI.getGroundModifier(system);
+
+        // [AI: REPLACE - AI POLICY]
+        // Normal AI predefines production distributions for Light/Medium/Heavy Tanks.
+        // Search AI should generate candidate production actions and evaluate them
+        // rather than inheriting these fixed group weights.
         COREAI.addItemToBuildDistribution(system, ai, co1, co2, directIndirectRatio, COREAI.lightTankGroup, groundModifer * groupDistribution[1] * player.getCoGroupModifier(COREAI.lightTankGroup[1], system));
         COREAI.addItemToBuildDistribution(system, ai, co1, co2, directIndirectRatio, COREAI.mediumTankGroup, groundModifer * groupDistribution[2] * player.getCoGroupModifier(COREAI.mediumTankGroup[1], system));
         COREAI.addItemToBuildDistribution(system, ai, co1, co2, directIndirectRatio, COREAI.heavyTankGroup, groundModifer * groupDistribution[3] * player.getCoGroupModifier(COREAI.heavyTankGroup[1], system));
         COREAI.initAirForceDistribution(system, ai, player, co1, co2, directIndirectRatio, groupDistribution);
         COREAI.initAmphibiousDistribution(system, ai, player, co1, co2, directIndirectRatio, groupDistribution);
 
+        // [AI: REPLACE - AI POLICY]
+        // Normal AI predefines production distributions for Light/Medium/Heavy Tanks.
+        // Search AI should generate candidate production actions and evaluate them
+        // rather than inheriting these fixed group weights.
         var variables = system.getVariables();
         var variableNavalBattle = variables.createVariable("NAVALBATTLE");
         var naval = variableNavalBattle.readDataInt32();

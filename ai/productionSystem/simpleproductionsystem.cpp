@@ -266,6 +266,9 @@ void SimpleProductionSystem::addItemToBuildDistribution(const QString & group, c
                 auto index = item.unitIds.indexOf(unitIds[i]);
                 if (index >= 0)
                 {
+                    // [AI: REPLACE - AI POLICY]
+                    // Existing Normal AI merges predefined unit-selection weights.
+                    // Search AI should not use these probabilities as its decision criterion.
                     item.chance[index] += chance[index];
                 }
                 else
@@ -626,6 +629,14 @@ bool SimpleProductionSystem::buildUnit(QmlVectorBuilding* pBuildings, QString un
     for (auto & pBuilding : pBuildings->getVector())
     {
         auto & item = m_averageMoverange[pBuilding.get()];
+        
+        // Only consider units whose island is at least 2.5% of the average reachable
+        // area of the units in the group 
+        
+        // IMPORTANT:
+        // This comparison assumes that all units in the group have
+        // compatible movement characteristics. Mixing movement types
+        // makes island-size comparisons potentially meaningless.
         if (item.averageValue * minAverageIslandSize <= item.islandSizes[unitId])
         {
             success = buildUnit(pBuilding->getX(), pBuilding->getY(), unitId, alwaysBuild);

@@ -113,6 +113,14 @@ public:
 
     Q_INVOKABLE qint32 getMaxSingleDamage() const;
     Q_INVOKABLE void setMaxSingleDamage(qint32 newMaxSingleDamage);
+    /**
+     * @brief reasonableBuildField Returns true if the AI can build the unit assuming it satisfies certain heuristics 
+     * like not taking a certain amount of damage by nearby units, etc.
+     * 
+     * [AI: Heuristic/Evaluator function - Use with Care]
+     * This function applies a mini-evaluation that would interfere with AI. 
+     * Its return can influence whether or not a unit is built. 
+     */
     Q_INVOKABLE bool reasonableBuildField(qint32 x, qint32 y, QString unitId, qint32 maxDamageCheckRange, qint32 maxSingleDamage);
 private:
     bool buildUnit(QmlVectorBuilding* pBuildings, QString unitId, qreal minAverageIslandSize, bool alwaysBuild);
