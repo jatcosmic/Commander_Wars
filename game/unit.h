@@ -1020,12 +1020,22 @@ public:
     Q_INVOKABLE bool isAttackableFromPosition(Unit* pDefender, QPoint unitPos);
     /**
      * @brief isAttackable
+     * 
+     * Determine if the defender can be attacked.
+     * Attackable conditions are things like if the defender is not within fog; the defender is within 
+     * the range of their attack; if the defender is stealthed, then if they can attack stealthed units;
+     * if the attacker has ammo; and if the attacker does more than 0 damage to the defender.
+     * 
      * @param pDefender
      * @return
      */
     Q_INVOKABLE bool isAttackable(Unit* pDefender, bool ignoreOutOfVisionRange = false, QPoint unitPos = QPoint(-1, -1), bool isDefenderPos = false);
     /**
      * @brief canAttackWithWeapon
+     * 
+     * Check if the target can be attacked with our weapon. Checks distance and min and max fire range.
+     * Will also check customizable js functions to determine if the target can be attacked.
+     * 
      * @param weaponIndex
      * @param unitX
      * @param unitY
@@ -1054,6 +1064,14 @@ public:
     Q_INVOKABLE qreal getEnvironmentDamage(QString terrainID);
     /**
      * @brief canMoveOver
+     * 
+     * Checks whether this unit's movement type is allowed to traverse the terrain
+     * at (x, y). This does not perform pathfinding or check whether the tile is
+     * reachable from the unit's current position. 
+     * 
+     * E.g. for an Infantry unit and a Sea terrain at (x, y), the function returns 
+     * false since Infantry units cannot traverse Sea terrain. 
+     * 
      * @param x
      * @param y
      * @return

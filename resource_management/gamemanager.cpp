@@ -33,6 +33,9 @@ void GameManager::loadAll()
     RessourceManagement<GameManager>::loadAll(m_loadedHeavyAis);
     m_scriptPath = "aidata/very_easy/";
     RessourceManagement<GameManager>::loadAll(m_loadedVeryEasyAis);
+    m_scriptPath = "aidata/otter/";    
+    m_raiseErrors = true;   
+    RessourceManagement<GameManager>::loadAll(m_loadedOtterAis);
     m_raiseErrors = true;
 }
 

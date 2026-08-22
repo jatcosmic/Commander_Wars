@@ -39,6 +39,15 @@ public:
         }
         return "";
     }
+
+    inline QString getOtterAiID() 
+    {
+        if(m_loadedOtterAis.isEmpty())
+        {
+            return "";
+        }
+        return m_loadedOtterAis.at(0);
+    }
     /**
      * @brief getVictoryRuleCount
      * @return the amount of victory conditions loaded at the current time
@@ -61,6 +70,8 @@ private:
     QStringList m_loadedHeavyAis;
     QStringList m_loadedNormalAis;
     QStringList m_loadedVeryEasyAis;
+    QStringList m_loadedOtterAis;
+
 };
 
 #endif // GAMEMANAGER_H

@@ -239,9 +239,12 @@ public:
      */
     void createMovementMap(spQmlVectorBuilding & pBuildings, spQmlVectorBuilding & pEnemyBuildings);
     /**
-     * @brief useBuilding
-     * @param pBuildings
-     * @return
+     * @brief useBuilding performs a single pending building action, such as launching a missile from
+     * a silo. Unit production is excluded; any target or menu input the action needs is picked
+     * automatically, preferring the game script's choice.
+     * @param pBuildings our own buildings
+     * @param pUnits our own units
+     * @return true if an action was performed; call repeatedly until it returns false
      */
     bool useBuilding(spQmlVectorBuilding & pBuildings, spQmlVectorUnit & pUnits);
     /**
@@ -357,10 +360,20 @@ public:
      */
     FundsDamageData calcFundsDamage(const QRectF & damage, Unit* pAtk, Unit* pDef) const;
     /**
-     * @brief appendAttackTargets
-     * @param pUnit
-     * @param pEnemyUnits
-     * @param targets
+     * @brief appendAttackTargets appends candidate move destinations for pUnit, not attack targets
+     * directly: for every enemy pUnit could attack, every tile within firing range of that enemy is
+     * considered as a place to move to and fire from, and pushed into targets as (x, y, weight) with a
+     * malus added if the enemy is stealthed. A candidate tile is only added if it is actually empty
+     * (no unit standing on it) and pUnit can move onto it - occupied tiles, including ones held by our
+     * own or allied units, are excluded. See appendAttackTargetsIgnoreOwnUnits() for the counterpart
+     * that instead targets tiles held by friendly units.
+     * 
+     * [AI: Replace - AI Policy]
+     * 
+     * @param pUnit the unit whose possible move-and-attack positions are being collected
+     * @param pEnemyUnits enemies to find firing positions against
+     * @param targets [out] appended with (x, y, weight) move destinations
+     * @param distanceModifier base weight added to each candidate; lower is preferred by callers
      */
     void appendAttackTargets(Unit* pUnit, spQmlVectorUnit & pEnemyUnits, std::vector<QVector3D>& targets, qint32 distanceModifier = 1);
     /**
@@ -684,12 +697,65 @@ protected:
     bool processPredefinedMapScripted(Unit* pUnit, spQmlVectorUnit & pEnemyUnits, spQmlVectorBuilding & pEnemyBuildings);
     virtual void finishTurn();
     // helper functions to get targets for unit actions
+    /**
+     * @brief appendSupportTargets appends every empty tile adjacent to one of our other units, or for
+     * place actions adjacent to an enemy unit, to targets.
+     * @param actions the action IDs available to pCurrentUnit; does nothing without an
+     * ACTION_SUPPORTSINGLE, ACTION_SUPPORTALL or ACTION_PLACE entry
+     * @param pCurrentUnit the unit the destinations are collected for; skipped when scanning pUnits
+     * @param pUnits our own units, used for the support actions
+     * @param pEnemyUnits enemy units, used for the place actions
+     * @param targets [out] appended with (x, y, 1 + distanceModifier) move destinations
+     * @param distanceModifier weight assigned to each candidate
+     */
     void appendSupportTargets(const QStringList & actions, Unit* pCurrentUnit, spQmlVectorUnit & pUnits, spQmlVectorUnit & pEnemyUnits, std::vector<QVector3D>& targets, qint32 distanceModifier = 1);
+    /**
+     * @brief appendCaptureTargets appends the tile of every building in pEnemyBuildings that pUnit
+     * could move onto and capture, or fire as a missile silo, to targets.
+     * @param actions the action IDs available to pUnit; does nothing without ACTION_CAPTURE or ACTION_MISSILE
+     * @param pUnit the unit the destinations are collected for
+     * @param pEnemyBuildings buildings not under our control
+     * @param targets [out] appended with (x, y, distanceModifier) move destinations
+     * @param distanceModifier weight assigned to each candidate
+     */
     void appendCaptureTargets(const QStringList & actions, Unit* pUnit, spQmlVectorBuilding & pEnemyBuildings,  std::vector<QVector3D>& targets, qint32 distanceModifier = 1);
+    /**
+     * @brief appendAttackTargetsIgnoreOwnUnits is the counterpart to appendAttackTargets() that
+     * relaxes the "candidate tile must be empty" rule specifically for tiles occupied by a friendly
+     * or allied unit: it looks for tiles within firing range of an attackable enemy that pUnit could
+     * move onto, and adds those held by an ally as move destinations anyway, at a higher (worse)
+     * weight than a genuinely free tile. pUnit obviously cannot occupy such a tile this turn; these
+     * entries exist so movement still gets pulled toward an already-engaged front line or a spot an
+     * ally may vacate, rather than being excluded outright. Enemy-occupied and empty tiles are not
+     * added here - only allied-occupied ones.
+     * 
+     * [AI: Replace - AI Policy]
+     * 
+     * @param pUnit the unit whose possible move-and-attack positions are being collected
+     * @param pEnemyUnits enemies to find firing positions against
+     * @param targets [out] appended with (x, y, weight) move destinations
+     * @param distanceModifier base weight added to each candidate before the extra malus
+     */
     void appendAttackTargetsIgnoreOwnUnits(Unit* pUnit, spQmlVectorUnit & pEnemyUnits, std::vector<QVector3D>& targets, qint32 distanceModifier = 1);
+    /**
+     * @brief appendRepairTargets appends the tile of every unoccupied building in pBuildings that can
+     * repair pUnit to targets.
+     * @param pUnit the unit the destinations are collected for
+     * @param pBuildings our own buildings
+     * @param targets [out] appended with (x, y, 1) move destinations
+     */
     void appendRepairTargets(Unit* pUnit, spQmlVectorBuilding & pBuildings, std::vector<QVector3D>& targets);
     void appendSupplyTargets(Unit* pUnit, spQmlVectorUnit & pUnits, std::vector<QVector3D>& targets);
     void appendTransporterTargets(Unit* pUnit, spQmlVectorUnit & pUnits, std::vector<QVector3D>& targets);
+    /**
+     * @brief appendCaptureTransporterTargets
+     * 
+     * [AI: Replace - AI Policy]
+     * For each empty one-slot transporter capable of carrying pUnit, determine whether pUnit 
+     * has a sufficiently close capture target that is reachable from both the unit's and 
+     * transporter's island contexts. If such a building exists, and is a building that 
+     * we consider far away, add the transporter's position to the target list.     
+     */
     void appendCaptureTransporterTargets(Unit* pUnit, spQmlVectorUnit & pUnits,
                                          spQmlVectorBuilding & pEnemyBuildings, std::vector<QVector3D>& targets, qint32 distanceModifier = 1);
     std::vector<Unit*> appendLoadingTargets(Unit* pUnit, spQmlVectorUnit & pUnits,
@@ -739,6 +805,11 @@ protected:
     void appendUnloadTargetsForAttacking(Unit* pUnit, spQmlVectorUnit & pEnemyUnits, std::vector<QVector3D>& targets, qint32 rangeMultiplier, qint32 distanceModifier = 1);
     /**
      * @brief appendTerrainBuildingAttackTargets
+     * 
+     * Given the (x, y) coordinates of a building that can be attacked, 
+     * return the valid coordinates that the unit can stand on in order 
+     * to attack the building at maximum firing range. 
+     * 
      * @param pUnit
      * @param pEnemyBuildings
      * @param targets

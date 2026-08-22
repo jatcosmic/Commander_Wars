@@ -269,6 +269,7 @@ var COREAI =
                                           group[6]);
 
     },
+    // [AI: Replace - AI Policy]
     onNewBuildQueue : function(system, ai, buildings, units, enemyUnits, enemyBuildings, map, groupDistribution)
     {
         system.resetForcedProduction();

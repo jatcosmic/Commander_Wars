@@ -110,6 +110,8 @@ void QmlVectorUnit::pruneEnemies(const QmlVectorUnit * pOwnUnits, const QmlVecto
         QPoint position = m_Vector[i]->getMapPosition();
         bool inRange = false;
 
+        // [AI: Replace - AI Policy]
+        //
         // Remove enemy units that are too far away from our units to become strategically
         // relevant within the next few turns (the turns determined by distanceMultiplier).
         //

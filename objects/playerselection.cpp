@@ -1290,7 +1290,7 @@ void PlayerSelection::createAi(qint32 player, GameEnums::AiTypes type, QString d
 
 QStringList PlayerSelection::getDefaultAiNames() const
 {
-    QStringList defaultAiList = {tr("Human"), tr("Very Easy"), tr("Normal"), tr("Normal Off."), tr("Normal Def.")}; // heavy ai disabled cause it's not finished
+    QStringList defaultAiList = {tr("Human"), tr("Otter AI"), tr("Very Easy"), tr("Normal"), tr("Normal Off."), tr("Normal Def.")}; // heavy ai disabled cause it's not finished
 #if HEAVY_AI
     Interpreter *pInterpreter = Interpreter::getInstance();
     GameManager *pGameManager = GameManager::getInstance();

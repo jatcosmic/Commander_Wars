@@ -8,6 +8,7 @@
 #include "ai/normalai.h"
 #include "ai/heavyai/heavyai.h"
 #include "ai/dummyai.h"
+#include "ai/otterai/otterai.h"
 
 #include "game/gamemap.h"
 
@@ -114,7 +115,9 @@ spBaseGameInputIF BaseGameInputIF::createAi(GameMap* pMap, GameEnums::AiTypes ty
         }    
         else 
         {
-            ret = MemoryManagement::create<OtterAI>(pMap, "otterAI.ini", type, "OTTERAI");
+            GameManager* pGameManager = GameManager::getInstance();
+            QString id = pGameManager->getOtterAiID();
+            ret = MemoryManagement::create<OtterAi>(pMap, id, type);
         }
         break;
     }

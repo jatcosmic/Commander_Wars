@@ -50,9 +50,19 @@ public:
      */
     qint32 getCosts(const std::vector<QPoint> & path);
     /**
-     * @brief getClosestReachableMovePath
-     * @param target
-     * @return
+     * @brief getClosestReachableMovePath returns the path to the tile nearest target that this unit
+     * can legally stop on within movepoints, for when target itself cannot be reached or occupied.
+     * Returns the first crossable tile found, or an empty vector if there is none.
+     *
+     * [AI: INVESTIGATE]
+     * isCrossable() tests blockedByEnemy() un-negated, so an enemy-occupied tile counts as a valid
+     * stopping point while a tile held by our own or an allied unit does not. That is inverted from
+     * what the name suggests and may only work because attack destinations sit on enemy tiles.
+     *
+     * @param target the tile we would like to reach
+     * @param movepoints cost limit for the returned path; negative means unlimited
+     * @param direct when true the ripple does not expand to tiles more expensive than the current one
+     * @return path to the closest usable tile, first point is the destination and last is the start
      */
     std::vector<QPoint> getClosestReachableMovePath(QPoint target, qint32 movepoints = -2, bool direct = false);
     /**
