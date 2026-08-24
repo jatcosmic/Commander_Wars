@@ -52,7 +52,6 @@ namespace ProductionEngine
      * The index of each entry corresponds to the index of the building in pBuildings.
      * An empty map means that building has no legal build options.
      */
-    // std::vector<BuildOption> getLegalBuilds(CoreAI & ai, QmlVectorBuilding * pBuildings);
     std::vector<std::unordered_map<UnitId, BuildOption>> getLegalBuilds(CoreAI & ai, const QmlVectorBuilding * pBuildings);
 
 }
