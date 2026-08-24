@@ -2029,6 +2029,7 @@
         <file>resources/aidata/normal/normalaidefensive.js</file>
         <file>resources/aidata/normal/normalaioffensive.js</file>
         <file>resources/aidata/very_easy/veryeasyai.js</file>
+        <file>resources/aidata/otter/otterai.js</file>
         <file>mods/awdc_terrain/scripts/building/tower.js</file>
         <file>resources/scripts/units/battlecruiser.js</file>
         <file>resources/scripts/battleanimations/BATTLEANIMATION_BATTLECRUISER.js</file>

@@ -41,6 +41,11 @@ void SimpleProductionSystem::initialize()
         {
             m_init = erg.toBool();
         }
+        CONSOLE_PRINT("SimpleProductionSystem::initialize DEBUG aiName=" + m_owner->getAiName() +
+                      " m_init=" + QString::number(m_init) +
+                      " ergIsBool=" + QString::number(erg.isBool()) +
+                      " ergIsError=" + QString::number(erg.isError()) +
+                      " ergToString=" + erg.toString(), GameConsole::eERROR);
     }
     else
     {
@@ -87,6 +92,18 @@ bool SimpleProductionSystem::buildUnit(QmlVectorBuilding* pBuildings, QmlVectorU
         {
             executed = erg.toBool();
         }
+        CONSOLE_PRINT("SimpleProductionSystem::buildUnit DEBUG aiName=" + m_owner->getAiName() +
+                      " executed=" + QString::number(executed) +
+                      " ergIsBool=" + QString::number(erg.isBool()) +
+                      " ergIsError=" + QString::number(erg.isError()) +
+                      " ergToString=" + erg.toString() +
+                      " initialProductionCount=" + QString::number(m_initialProduction.size()), GameConsole::eERROR);
+    }
+    else
+    {
+        CONSOLE_PRINT("SimpleProductionSystem::buildUnit DEBUG SKIPPED aiName=" + m_owner->getAiName() +
+                      " m_enabled=" + QString::number(m_enabled) +
+                      " m_init=" + QString::number(m_init), GameConsole::eERROR);
     }
     return m_init && m_enabled;
 }

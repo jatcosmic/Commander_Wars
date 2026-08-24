@@ -3,6 +3,7 @@
 #include <QObject>
 
 #include "ai/coreai.h"
+#include "game/gamerules/productionengine.h"
 
 class QmlVectorUnit;
 class QmlVectorBuilding;
@@ -11,15 +12,15 @@ class QmlVectorPoint;
 class OtterAi;
 using spOtterAi = std::shared_ptr<OtterAi>;
 
-class OtterAi final : public CoreAI 
+class OtterAi final : public CoreAI
 {
     Q_OBJECT
 
     public:
         explicit OtterAi(GameMap* pMap, QString type, GameEnums::AiTypes aiType);
         virtual ~OtterAi() = default;
-        bool buildUnits(spQmlVectorBuilding & pBuildings, spQmlVectorUnit & pUnits,
-                        spQmlVectorUnit & pEnemyUnits, spQmlVectorBuilding & pEnemyBuildings);
+        virtual void onGameStart() override;
+        bool buildUnits(spQmlVectorBuilding & pBuildings);
 
     protected:
             bool performActionSteps(spQmlVectorUnit & pUnits, spQmlVectorUnit & pEnemyUnits,

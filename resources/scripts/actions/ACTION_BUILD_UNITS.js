@@ -72,6 +72,8 @@ var Constructor = function()
         return "";
     };
 
+    // Do we have the funds to build a unit from the construction list?
+    // If so, return true. False if otherwise.
     this.canBuildUnits = function(building, map)
     {
         var player = building.getOwner();

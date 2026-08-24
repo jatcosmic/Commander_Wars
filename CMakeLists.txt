@@ -765,6 +765,7 @@ set(${PROJECT_NAME}_SRCS
     ai/otterai/otterai.cpp ai/otterai/otterai.h
     # production system
     ai/productionSystem/simpleproductionsystem.h ai/productionSystem/simpleproductionsystem.cpp
+    game/gamerules/productionengine.h game/gamerules/productionengine.cpp
 
     # decision tree
     ai/decisiontree/leaf.cpp ai/decisiontree/leaf.h
