@@ -42,18 +42,6 @@ bool OtterAi::buildUnits(spQmlVectorBuilding & pBuildings)
     // "m_aiStep < buildUnits" here is the hook for per-turn build setup.
     m_aiStep = AISteps::buildUnits;
 
-    // for (auto & pBuilding : pBuildings->getVector())
-    // {
-    //     // buildUnit already returns false for anything that can't produce an INFANTRY,
-    //     // so a building we can't use is skipped rather than ending the search.
-    //     if (ProductionEngine::buildUnit(*this, pBuilding->getPosition(), "INFANTRY"))
-    //     {
-    //         // Only one action may be in flight: ActionPerformer drops any further
-    //         // emit while m_actionRunning is set. Return and let process() run again.
-    //         return true;
-    //     }
-    // }
-
     auto legalBuilds = ProductionEngine::getLegalBuilds(*this, pBuildings.get());
     Q_ASSERT(legalBuilds.size() == static_cast<size_t>(pBuildings->size()));
     
