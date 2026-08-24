@@ -19,7 +19,6 @@ class OtterAi final : public CoreAI
     public:
         explicit OtterAi(GameMap* pMap, QString type, GameEnums::AiTypes aiType);
         virtual ~OtterAi() = default;
-        virtual void onGameStart() override;
         bool buildUnits(spQmlVectorBuilding & pBuildings);
 
     protected:

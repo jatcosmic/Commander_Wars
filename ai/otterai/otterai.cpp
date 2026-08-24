@@ -13,11 +13,6 @@ OtterAi::OtterAi(GameMap* pMap, QString type, GameEnums::AiTypes aiType)
     CONSOLE_PRINT("Creating otter ai", GameConsole::eDEBUG);
 }
 
-void OtterAi::onGameStart()
-{
-    m_productionSystem.initialize();
-}
-
 void OtterAi::process() 
 {
     spQmlVectorBuilding spBuildings = m_pPlayer->getSpBuildings();
@@ -47,16 +42,45 @@ bool OtterAi::buildUnits(spQmlVectorBuilding & pBuildings)
     // "m_aiStep < buildUnits" here is the hook for per-turn build setup.
     m_aiStep = AISteps::buildUnits;
 
-    for (auto & pBuilding : pBuildings->getVector())
+    // for (auto & pBuilding : pBuildings->getVector())
+    // {
+    //     // buildUnit already returns false for anything that can't produce an INFANTRY,
+    //     // so a building we can't use is skipped rather than ending the search.
+    //     if (ProductionEngine::buildUnit(*this, pBuilding->getPosition(), "INFANTRY"))
+    //     {
+    //         // Only one action may be in flight: ActionPerformer drops any further
+    //         // emit while m_actionRunning is set. Return and let process() run again.
+    //         return true;
+    //     }
+    // }
+
+    auto legalBuilds = ProductionEngine::getLegalBuilds(*this, pBuildings.get());
+    Q_ASSERT(legalBuilds.size() == static_cast<size_t>(pBuildings->size()));
+    
+    if(legalBuilds.empty())
     {
+        return false;
+    }
+
+
+    for(int i = 0; i < pBuildings->size(); i++)
+    {
+        auto it = legalBuilds[i].find("INFANTRY");
+
+        if (it == legalBuilds[i].end())
+        {
+            continue;
+        }
+
         // buildUnit already returns false for anything that can't produce an INFANTRY,
         // so a building we can't use is skipped rather than ending the search.
-        if (ProductionEngine::buildUnit(*this, pBuilding->getPosition(), "INFANTRY"))
+        if (ProductionEngine::buildUnit(*this, it->second))
         {
             // Only one action may be in flight: ActionPerformer drops any further
             // emit while m_actionRunning is set. Return and let process() run again.
             return true;
         }
     }
+
     return false;
 }

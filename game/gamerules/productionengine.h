@@ -9,6 +9,8 @@
 class CoreAI;
 class QmlVectorBuilding;
 
+using UnitId = QString;
+
 /**
  * @brief Legality layer for unit production.
  *
@@ -45,6 +47,12 @@ namespace ProductionEngine
      *
      * Affordability and the unit limit are part of legality, so every successful build
      * invalidates the result and it has to be recomputed rather than cached.
+     * 
+     * The returned vector has exactly one entry for every building in pBuildings.
+     * The index of each entry corresponds to the index of the building in pBuildings.
+     * An empty map means that building has no legal build options.
      */
-    std::vector<BuildOption> getLegalBuilds(CoreAI & ai, QmlVectorBuilding * pBuildings);
+    // std::vector<BuildOption> getLegalBuilds(CoreAI & ai, QmlVectorBuilding * pBuildings);
+    std::vector<std::unordered_map<UnitId, BuildOption>> getLegalBuilds(CoreAI & ai, const QmlVectorBuilding * pBuildings);
+
 }

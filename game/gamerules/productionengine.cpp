@@ -104,15 +104,19 @@ namespace
         return buildUnit(ai, option.position, option.unitId);
     }
 
-    std::vector<BuildOption> getLegalBuilds(CoreAI & ai, QmlVectorBuilding * pBuildings)
+    std::vector<std::unordered_map<UnitId, BuildOption>> getLegalBuilds(CoreAI & ai, const QmlVectorBuilding * pBuildings)
     {
-        std::vector<BuildOption> options;
         if (pBuildings == nullptr)
         {
-            return options;
+            return std::vector<std::unordered_map<UnitId, BuildOption>>();
         }
-        for (auto & pBuilding : pBuildings->getVector())
+
+        std::vector<std::unordered_map<UnitId, BuildOption>> options(pBuildings->size());
+
+        // for (auto & pBuilding : pBuildings->getVector())
+        for(int i = 0; i < pBuildings->size(); i++) 
         {
+            auto pBuilding = pBuildings->at(i);
             // The script calls are paid once per building. The unit loop below only indexes
             // vectors, so the cost scales with buildings rather than with (building, unit)
             // pairs.
@@ -124,15 +128,21 @@ namespace
             const QStringList unitIds = open.pData->getActionIDs();
             const QVector<qint32> costs = open.pData->getCostList();
             const QVector<bool> enabled = open.pData->getEnabledList();
-            for (qint32 i = 0; i < unitIds.size(); ++i)
+
+            Q_ASSERT(unitIds.size() == costs.size());
+            Q_ASSERT(unitIds.size() == enabled.size());
+            
+            for (qint32 j = 0; j < unitIds.size(); ++j)
             {
-                if (enabled[i])
+                if (enabled[j])
                 {
-                    options.push_back(BuildOption{
-                        .position = pBuilding->getPosition(), 
-                        .unitId = unitIds[i], 
-                        .cost = costs[i]
-                    });
+                    options[i].insert({
+                        unitIds[j], 
+                        BuildOption{
+                            .position = pBuilding->getPosition(), 
+                            .unitId = unitIds[j], 
+                            .cost = costs[j]
+                    }});
                 }
             }
         }
