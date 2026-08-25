@@ -20,6 +20,11 @@ void OtterAi::process()
     spQmlVectorUnit spEnemyUnits = m_pPlayer->getSpEnemyUnits();
     spQmlVectorBuilding spEnemyBuildings = m_pPlayer->getSpEnemyBuildings();
 
+    // TODO:
+    // Rewrite Finite-State Machine to make use of States Pattern:
+    // https://refactoring.guru/design-patterns/state
+    
+
     // process() is re-entered once per completed action: performActionSteps emits a
     // single action and returns true, the engine performs it and calls us back. When
     // nothing is left to do the turn ends.
